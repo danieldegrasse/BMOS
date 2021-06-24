@@ -11,10 +11,12 @@
 #include <sys/err.h>
 
 typedef struct {
-    uint8_t *read_offset;
-    uint8_t *write_offset;
-    uint32_t len;
-    uint8_t *buff;
+    uint8_t *read_offset; /*!< Address to read next byte from */
+    uint8_t *write_offset; /*!< Address to write next byte to */
+    uint8_t *buf_end; /*!< Pointer to first memory location after buffer */
+    uint32_t len; /*!< Length of buffer's backing store */
+    uint32_t size; /*!< Current number of bytes in buffer */
+    uint8_t *buff; /*!< Pointer to buffer's backing store */
 } RingBuf_t;
 
 /**

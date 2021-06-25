@@ -149,6 +149,7 @@ typedef enum
   */
 
 #include <stdint.h>
+#include "core_cm4.h"
 #define __I volatile const
 #define __IO volatile
 

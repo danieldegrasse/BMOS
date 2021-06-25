@@ -18,7 +18,7 @@ syserr_t buf_init(RingBuf_t *buf, uint8_t *store, uint32_t storelen) {
     buf->read_offset = store;
     buf->write_offset = store;
     buf->buf_end = (uint8_t *)(store + storelen);
-    return SYS_OK
+    return SYS_OK;
 }
 
 /**
@@ -33,7 +33,7 @@ syserr_t buf_peek(RingBuf_t *buf, char *data) {
         return ERR_NOMEM;
     }
     // If character is present, copy it to output
-    *data = buf->read_offset;
+    *data = *((char*)buf->read_offset);
     return SYS_OK;
 }
 
@@ -44,7 +44,7 @@ syserr_t buf_peek(RingBuf_t *buf, char *data) {
  * @return SYS_OK, ERR_NOMEM if buffer is empty
  */
 syserr_t buf_read(RingBuf_t *buf, char *data) {
-    if (buf_readblock(buf, data, 1) == 0) {
+    if (buf_readblock(buf, (uint8_t*)data, 1) == 0) {
         // No data in buffer to return;
         return ERR_NOMEM;
     }
@@ -59,7 +59,7 @@ syserr_t buf_read(RingBuf_t *buf, char *data) {
  * @return SYS_OK, ERR_NOMEM if buffer is full
  */
 syserr_t buf_write(RingBuf_t *buf, char data) {
-    if (buf_writeblock(buf, data, 1) == 0) {
+    if (buf_writeblock(buf, (uint8_t*)&data, 1) == 0) {
         // No space in buffer to write to
         return ERR_NOMEM;
     }

@@ -5,11 +5,12 @@
  * Error definitions
  */
 typedef enum syserr {
-    SYS_OK, /*!< Success return code */
-    ERR_FAIL, /*!< Generic error */
+    SYS_OK,       /*!< Success return code */
+    ERR_FAIL,     /*!< Generic error */
     ERR_BADPARAM, /*!< Invalid parameters */
-    ERR_NOMEM, /*!< Out of memory */
+    ERR_NOMEM,    /*!< Out of memory */
+    ERR_INUSE,    /*!< Device in use */
+    ERR_NOSUPPORT, /*!< Feature support is not implemented */
 } syserr_t;
-
 
 #endif

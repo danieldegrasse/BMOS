@@ -1,6 +1,5 @@
 
 #include <gpio/gpio.h>
-
 /**
  * Basic code to blink D4 LED on STM32L433 MCU
  */

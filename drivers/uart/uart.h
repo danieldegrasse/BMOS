@@ -20,6 +20,14 @@ typedef enum {
 } UART_wordlen_t;
 
 /**
+ * UART stop bit count
+ */
+typedef enum {
+    UART_onestop, /*!< 1 stop bit */
+    UART_twostop, /*!< 2 stop bits */
+} UART_stopbit_t;
+
+/**
  * UART parity control
  */
 typedef enum {
@@ -56,24 +64,25 @@ typedef enum {
  * UART baud rate selection
  */
 typedef enum {
-    UART_baud_1200 = 0,
-    UART_baud_2400 = 1,
-    UART_baud_4800 = 2,
-    UART_baud_9600 = 3,
-    UART_baud_19200 = 4,
-    UART_baud_38400 = 5,
-    UART_baud_57600 = 6,
-    UART_baud_115200 = 7,
+    UART_baud_auto = 0,
+    UART_baud_1200 = 1,
+    UART_baud_2400 = 2,
+    UART_baud_4800 = 3,
+    UART_baud_9600 = 4,
+    UART_baud_19200 = 5,
+    UART_baud_38400 = 6,
+    UART_baud_57600 = 7,
+    UART_baud_115200 = 8,
 } UART_baud_rate_t;
 
 /**
  * UART peripheral list. See datasheet for pin connections.
  */
 typedef enum {
-    LPUART1 = 0,
-    USART1 = 1,
-    USART2 = 2,
-    USART3 = 3,
+    LPUART_1 = 0,
+    USART_1 = 1,
+    USART_2 = 2,
+    USART_3 = 3,
 } UART_periph_t;
 
 #define NUM_UARTS 4
@@ -88,12 +97,13 @@ typedef int UART_timeout_t;
  */
 typedef struct UART_config {
     UART_wordlen_t UART_wordlen;          /*!< UART word length */
+    UART_stopbit_t UART_stopbit;          /*!< Number of stop bits */
     UART_parity_t UART_parity;            /*!< UART parity selection */
     UART_pinswap_t UART_pin_swap;         /*!< UART swap pin rx and tx */
     UART_bitorder_t UART_bit_order;       /*!< UART bit MSB or LSB first */
     UART_flow_control_t UART_flowcontrol; /*!< UART flow control setting */
     UART_baud_rate_t UART_baud_rate;      /*!< UART baud rate */
-    UART_timeout_t timeout;               /*!< UART read/write timeout */
+    UART_timeout_t UART_timeout;          /*!< UART read/write timeout */
 } UART_config_t;
 
 typedef void *UART_handle_t;
@@ -127,6 +137,5 @@ int UART_read(UART_handle_t handle, uint8_t *buf, uint32_t len, syserr_t *err);
  * @return number of bytes written, or -1 on error
  */
 int UART_write(UART_handle_t handle, uint8_t *buf, uint32_t len, syserr_t *err);
-
 
 #endif

@@ -2,7 +2,7 @@
 
 #include <device/device.h>
 #include "gpio.h"
-#include <sys/util.h>
+#include <util/util.h>
 
 /**
  * Configure a GPIO port for use with driver
@@ -237,7 +237,6 @@ syserr_t GPIO_write(GPIO_port_t port, GPIO_pin_t pin, GPIO_level_t lvl) {
 GPIO_level_t GPIO_read(GPIO_port_t port, GPIO_pin_t pin) {
     // Begin by converting port into base register
     GPIO_TypeDef *periph;
-    uint32_t shift = pin;
     switch (port) {
     case GPIO_PORT_A:
         periph = GPIOA;

@@ -14,10 +14,17 @@ OPENOCD=openocd -f /usr/share/openocd/scripts/board/stm32l4discovery.cfg
 DRIVERS=drivers
 
 
-
-# Note that mthumb is required. Cortex M executes in T32 mode.
-CFLAGS=-mthumb -nostartfiles -ffreestanding -g -isystem $(DRIVERS)
-LDFLAGS= -T linker_script.ld -Map=$(BUILDDIR)/$(PROG).map
+# # Note that mthumb is required. Cortex M executes in T32 mode.
+CFLAGS += -mcpu=cortex-m4 \
+	-mthumb \
+	-Wall \
+	-Werror \
+	-ffreestanding \
+	-g \
+	-isystem $(DRIVERS) \
+	-nostartfiles
+LDFLAGS += -Wl,-T linker_script.ld \
+	-Wl,-Map=$(BUILDDIR)/$(PROG).map
 
 # Build output directory
 BUILDDIR=build
@@ -51,7 +58,7 @@ $(BUILDDIR)/$(PROG).bin: $(BUILDDIR)/$(PROG).elf
 	$(OBJCOPY) -O binary $^ $@
 
 $(BUILDDIR)/$(PROG).elf: $(_OBJ)
-	$(LD) -o $@ $^ $(LDFLAGS)
+	$(CC) -o $@ $^ $(CFLAGS) $(LDFLAGS)
 
 ##### Flash code to board using OpenOCD (0x08000000 is start of flash bank)
 flash: $(BUILDDIR)/$(PROG).bin

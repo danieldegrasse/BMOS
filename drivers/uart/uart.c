@@ -7,6 +7,7 @@
 
 #include <device/device.h>
 #include <util/ringbuf.h>
+#include <sys/isr.h>
 #include <util/util.h>
 
 #include "uart.h"
@@ -36,6 +37,7 @@ static UART_periph_status_t UARTS[NUM_UARTS] = {0};
 static uint8_t UART_RBUFFS[NUM_UARTS][UART_RINGBUF_SIZE];
 static uint8_t UART_WBUFFS[NUM_UARTS][UART_RINGBUF_SIZE];
 
+static void UART_interrupt(UART_periph_t source);
 /**
  * Opens a UART or LPUART device for read/write access
  * @param periph: Identifier of UART to open
@@ -252,6 +254,14 @@ UART_handle_t UART_open(UART_periph_t periph, UART_config_t *config,
     if (handle->cfg.UART_baud_rate == UART_baud_auto) {
         SETBITS(handle->regs->CR2, USART_CR2_ABREN);
     }
+    // Enable the transmitter and receiver
+    SETBITS(handle->regs->CR1, USART_CR1_TE);
+    SETBITS(handle->regs->CR1, USART_CR1_RE);
+    // Register interrupt handler
+    set_UART_isr(UART_interrupt); 
+    // Enable transmit and receive interrupts
+    SETBITS(handle->regs->CR1, USART_CR1_TXEIE);
+    SETBITS(handle->regs->CR1, USART_CR1_RXNEIE);
     return handle;
 }
 
@@ -274,3 +284,36 @@ int UART_read(UART_handle_t handle, uint8_t *buf, uint32_t len, syserr_t *err);
  * @return number of bytes written, or -1 on error
  */
 int UART_write(UART_handle_t handle, uint8_t *buf, uint32_t len, syserr_t *err);
+
+/**
+ * Handles UART interrupts
+ * @param source: UART device generating interrupt
+ */
+static void UART_interrupt(UART_periph_t source) {
+    USART_TypeDef *uart;
+    switch (source) {
+    case LPUART_1:
+        uart = LPUART1;
+        break;
+    case USART_1:
+        uart = USART1;
+        break;
+    case USART_2:
+        uart = USART2;
+        break;
+    case USART_3:
+        uart = USART3;
+        break;
+    default:
+        // Cannot handle this interrupt.
+        return;
+        break;
+    }
+    /**
+     * Now determine what flag caused the interrupt. We need to check for
+     * the TXE and RXNE bits
+     */
+    if (READBITS(uart->ISR, USART_ISR_RXNE)) {
+        // We have 
+    }
+}

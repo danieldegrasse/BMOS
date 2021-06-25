@@ -51,14 +51,17 @@ all: $(BUILDDIR)/$(PROG).bin
 
 # Output compiled object files into BUILDDIR
 $(OBJDIR)/%.o: %.c
-	[ -d $(dir $@) ] || mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -c -o $@ $< 
+	@ [ -d $(dir $@) ] || mkdir -p $(dir $@)
+	@ echo "[CC] $<"
+	@ $(CC) $(CFLAGS) -c -o $@ $< 
 
 $(BUILDDIR)/$(PROG).bin: $(BUILDDIR)/$(PROG).elf
-	$(OBJCOPY) -O binary $^ $@
+	@ echo "Creating $@"
+	@ $(OBJCOPY) -O binary $^ $@
 
 $(BUILDDIR)/$(PROG).elf: $(_OBJ)
-	$(CC) -o $@ $^ $(CFLAGS) $(LDFLAGS)
+	@ echo "Linking $@"
+	@ $(CC) -o $@ $^ $(CFLAGS) $(LDFLAGS)
 
 ##### Flash code to board using OpenOCD (0x08000000 is start of flash bank)
 flash: $(BUILDDIR)/$(PROG).bin

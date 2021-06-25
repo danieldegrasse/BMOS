@@ -5,6 +5,8 @@
  */
 #include <stdint.h>
 
+#include "isr.h"
+
 // Variables declared in linker script
 extern unsigned char _srcdata;
 extern unsigned char _sdata;
@@ -71,9 +73,9 @@ const uint32_t exception_vectors[] __attribute__((section(".vectors"))) = {
     (uint32_t)DefaultISRHandler, /*!< 34 I2C2 Error Interrupt */
     (uint32_t)DefaultISRHandler, /*!< 35 SPI1 global Interrupt */
     (uint32_t)DefaultISRHandler, /*!< 36 SPI2 global Interrupt */
-    (uint32_t)DefaultISRHandler, /*!< 37 USART1 global Interrupt */
-    (uint32_t)DefaultISRHandler, /*!< 38 USART2 global Interrupt */
-    (uint32_t)DefaultISRHandler, /*!< 39 USART3 global Interrupt */
+    (uint32_t)UART_isr,          /*!< 37 USART1 global Interrupt */
+    (uint32_t)UART_isr,          /*!< 38 USART2 global Interrupt */
+    (uint32_t)UART_isr,          /*!< 39 USART3 global Interrupt */
     (uint32_t)DefaultISRHandler, /*!< 40 External Line[15:10] Interrupts */
     (uint32_t)DefaultISRHandler, /*!< 41 RTC Alarm (A and B) through EXTI Line Interrupt */
     0,                           /*!< 42 Reserved */
@@ -104,7 +106,7 @@ const uint32_t exception_vectors[] __attribute__((section(".vectors"))) = {
     (uint32_t)DefaultISRHandler, /*!< 67 USB event Interrupt */
     (uint32_t)DefaultISRHandler, /*!< 68 DMA2 Channel 6 global interrupt */
     (uint32_t)DefaultISRHandler, /*!< 69 DMA2 Channel 7 global interrupt */
-    (uint32_t)DefaultISRHandler, /*!< 70 LP UART1 interrupt */
+    (uint32_t)UART_isr,          /*!< 70 LP UART1 interrupt */
     (uint32_t)DefaultISRHandler, /*!< 71 Quad SPI global interrupt */
     (uint32_t)DefaultISRHandler, /*!< 72 I2C3 event interrupt */
     (uint32_t)DefaultISRHandler, /*!< 73 I2C3 error interrupt */

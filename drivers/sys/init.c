@@ -18,8 +18,10 @@ extern unsigned char _stack_ptr;
 
 // Function prototypes
 void init(void);
-void DefaultISRHandler(void);
 extern void main(void); // Assume that the user will provide a main function
+
+static void DefaultISRHandler(void);
+static void NMI_irq(void);
 /*
  * Exception Vector Table. See page 321 of Datasheet for list.
  * Reset vector is required for code to run.
@@ -27,7 +29,7 @@ extern void main(void); // Assume that the user will provide a main function
 const uint32_t exception_vectors[] __attribute__((section(".vectors"))) = {
     (uint32_t)&_stack_ptr,       /*!< address for top of stack */
     (uint32_t)init,              /*!< Reset handler */
-    (uint32_t)DefaultISRHandler, /*!< NMI */
+    (uint32_t)NMI_irq,           /*!< NMI */
     (uint32_t)DefaultISRHandler, /*!< Hard fault */
     (uint32_t)DefaultISRHandler, /*!< Bus fault */
     (uint32_t)DefaultISRHandler, /*!< Memory management fault */
@@ -121,13 +123,17 @@ const uint32_t exception_vectors[] __attribute__((section(".vectors"))) = {
     (uint32_t)DefaultISRHandler  /*!< 82 CRS global interrupt  */
 };
 
+static void NMI_irq(void) {
+    // Spin.
+    while(1);
+}
+
 /**
  * Default Handler for an ISR.
  */
-void DefaultISRHandler(void) {
+static void DefaultISRHandler(void) {
     // Spin.
-    while (1) {
-    }
+    while (1);
 }
 
 /**
@@ -153,8 +159,6 @@ void init(void) {
     while (len--) {
         *dst++ = 0;
     }
-    // Set system clock to 48MHz
-    select_sysclock(CLK_MSI_48MHz);
     // init is done. Call the main entry point.
     main();
 

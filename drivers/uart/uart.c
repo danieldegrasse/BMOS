@@ -302,9 +302,11 @@ int UART_read(UART_handle_t handle, uint8_t *buf, uint32_t len, syserr_t *err) {
                 // Decrement timeout
                 delay_ms(200);
                 timeout -= 200;
-                if (timeout < UART_TIMEOUT_NONE) {
-                    // Reset to zero timeout so we will exit loop
+                if (timeout - 200 < UART_TIMEOUT_NONE) {
+                    // Just set timeout to NONE (defined to be zero)
                     timeout = UART_TIMEOUT_NONE;
+                } else {
+                    timeout -= 200;
                 }
             }
         }
@@ -323,7 +325,41 @@ int UART_read(UART_handle_t handle, uint8_t *buf, uint32_t len, syserr_t *err) {
  * @param err: set on error
  * @return number of bytes written, or -1 on error
  */
-int UART_write(UART_handle_t handle, uint8_t *buf, uint32_t len, syserr_t *err);
+int UART_write(UART_handle_t handle, uint8_t *buf, uint32_t len,
+               syserr_t *err) {
+    int num_written, timeout;
+    /**
+     *  First, disable interrupts so we do not get back data into the output
+     * ring buffer
+     */
+    disable_irq();
+    // Now write data to the ring buffer
+    num_written = buf_writeblock(&(((UART_periph_status_t *)handle)->write_buf),
+                                 buf, len);
+    while (num_written < len && timeout != UART_TIMEOUT_NONE) {
+        // Wait for there to be space in the ringbuffer
+        while (buf_getsize(&(((UART_periph_status_t *)handle)->write_buf)) ==
+                   UART_RINGBUF_SIZE &&
+               timeout != UART_TIMEOUT_NONE) {
+            // If the timeout is set to infinity, we should just spin here
+            if (timeout != UART_TIMEOUT_INF) {
+                // Decrement the timeout
+                delay_ms(200);
+                if (timeout - 200 < UART_TIMEOUT_NONE) {
+                    // Just set timeout to NONE (defined to be zero)
+                    timeout = UART_TIMEOUT_NONE;
+                } else {
+                    timeout -= 200;
+                }
+            }
+        }
+        // There is space to write data. Write it.
+        num_written +=
+            buf_writeblock(&(((UART_periph_status_t *)handle)->write_buf),
+                           buf + num_written, len - num_written);
+    }
+    return num_written;
+}
 
 /**
  * Handles UART interrupts

@@ -6,6 +6,7 @@
 #include <stdint.h>
 
 #include "isr.h"
+#include "clock.h"
 
 // Variables declared in linker script
 extern unsigned char _srcdata;
@@ -152,10 +153,11 @@ void init(void) {
     while (len--) {
         *dst++ = 0;
     }
+    // Set system clock to 48MHz
+    select_sysclock(CLK_MSI_48MHz);
     // init is done. Call the main entry point.
     main();
 
     // Should not reach this point unless main returns.
-    while (1)
-        ;
+    while (1);
 }

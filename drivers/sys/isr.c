@@ -14,23 +14,20 @@
 /* Structure of registered IRQ handlers */
 static struct { void (*uart_handler)(UART_periph_t); } irq_handlers = {0};
 
-
 /**
  * Simple function to disable interrupts.
  * This sets PRIMASK to 1, effectively disabling preemption
  */
-inline void disable_irq() {
-    asm("MOV r4, #1 \n\t"
-        "MSR primask, r4");
+void disable_irq() {
+    asm("CPSID i");
 }
 
 /**
  * Simple function to reenable interrupts.
  * This sets PRIMASK to 0, effectively allowing preemption
  */
-inline void enable_irq() {
-    asm("MOV r4, #0 \n\t"
-        "MSR primask, r4");
+void enable_irq() {
+    asm("CPSID i");
 }
 
 

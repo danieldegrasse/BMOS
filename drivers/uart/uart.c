@@ -6,8 +6,11 @@
 #include <string.h>
 
 #include <device/device.h>
-#include <util/ringbuf.h>
+#include <sys/clock.h>
+#include <sys/err.h>
 #include <sys/isr.h>
+#include <util/logging.h>
+#include <util/ringbuf.h>
 #include <util/util.h>
 
 #include "uart.h"
@@ -27,8 +30,8 @@ typedef struct {
     UART_config_t cfg;   /*!< User configuration for UART */
     USART_TypeDef *regs; /*!< Register access for this UART */
     UART_state_t state;  /*!< UART state (open or closed) */
-    RingBuf_t write_buf; /*!< UART write ring buffer */
-    RingBuf_t read_buf;  /*!< UART read ring buffer */
+    RingBuf_t write_buf; /*!< UART write ring buffer (outgoing data)*/
+    RingBuf_t read_buf;  /*!< UART read ring buffer (incoming data)*/
 } UART_periph_status_t;
 
 #define UART_RINGBUF_SIZE 80
@@ -258,7 +261,7 @@ UART_handle_t UART_open(UART_periph_t periph, UART_config_t *config,
     SETBITS(handle->regs->CR1, USART_CR1_TE);
     SETBITS(handle->regs->CR1, USART_CR1_RE);
     // Register interrupt handler
-    set_UART_isr(UART_interrupt); 
+    set_UART_isr(UART_interrupt);
     // Enable transmit and receive interrupts
     SETBITS(handle->regs->CR1, USART_CR1_TXEIE);
     SETBITS(handle->regs->CR1, USART_CR1_RXNEIE);
@@ -273,7 +276,44 @@ UART_handle_t UART_open(UART_periph_t periph, UART_config_t *config,
  * @param err: Set on error
  * @return number of bytes read, or -1 on error
  */
-int UART_read(UART_handle_t handle, uint8_t *buf, uint32_t len, syserr_t *err);
+int UART_read(UART_handle_t handle, uint8_t *buf, uint32_t len, syserr_t *err) {
+    int num_read, timeout;
+    /**
+     * First, we must disable interrupts. If we don't do so, then we may get
+     * inconsistent data from the ring buffer
+     */
+    disable_irq();
+    // Now, attempt to read data from the input ring buffer
+    num_read =
+        buf_readblock(&(((UART_periph_status_t *)handle)->read_buf), buf, len);
+    // reenable interrupts
+    enable_irq();
+    timeout = (int)((UART_periph_status_t *)handle)->cfg.UART_timeout;
+    while (num_read < len && timeout != UART_TIMEOUT_NONE) {
+        /**
+         * Wait for data to be available. For now, we will simply poll the
+         * ringbuffer's size
+         */
+        while (buf_getsize(&(((UART_periph_status_t *)handle)->read_buf)) ==
+                   0 &&
+               timeout != UART_TIMEOUT_NONE) {
+            // If the timeout is infinite, spin here until there is data to read
+            if (timeout != UART_TIMEOUT_INF) {
+                // Decrement timeout
+                delay_ms(200);
+                timeout -= 200;
+                if (timeout < UART_TIMEOUT_NONE) {
+                    // Reset to zero timeout so we will exit loop
+                    timeout = UART_TIMEOUT_NONE;
+                }
+            }
+        }
+        // Now, there is data available in the buffer. Read it.
+        num_read += buf_readblock(&(((UART_periph_status_t *)handle)->read_buf),
+                                  buf + num_read, len - num_read);
+    }
+    return num_read;
+}
 
 /**
  * Writes data to a UART or LPUART device
@@ -290,30 +330,44 @@ int UART_write(UART_handle_t handle, uint8_t *buf, uint32_t len, syserr_t *err);
  * @param source: UART device generating interrupt
  */
 static void UART_interrupt(UART_periph_t source) {
-    USART_TypeDef *uart;
-    switch (source) {
-    case LPUART_1:
-        uart = LPUART1;
-        break;
-    case USART_1:
-        uart = USART1;
-        break;
-    case USART_2:
-        uart = USART2;
-        break;
-    case USART_3:
-        uart = USART3;
-        break;
-    default:
-        // Cannot handle this interrupt.
-        return;
-        break;
-    }
+    char data;
+    /**
+     * Use the source as an index into the handle structures,
+     * to find the UART that generated the interrupt
+     */
+    UART_periph_status_t *handle = &UARTS[source];
     /**
      * Now determine what flag caused the interrupt. We need to check for
      * the TXE and RXNE bits
      */
-    if (READBITS(uart->ISR, USART_ISR_RXNE)) {
-        // We have 
+    if (READBITS(handle->regs->ISR, USART_ISR_RXNE)) {
+        // We have data in the RX buffer. Read it to clear the flag.
+        data = READBITS(handle->regs->RDR, USART_RDR_RDR);
+        // Store the data
+        if (buf_write(&(handle->read_buf), data) != SYS_OK) {
+            LOG_D("Dropping character from UART");
+            // Write 1 to RXFRQ to drop the data
+            SETBITS(handle->regs->RQR, USART_RQR_RXFRQ);
+        }
+    }
+    if (READBITS(handle->regs->ISR, USART_ISR_TXE)) {
+        /**
+         * Transmit data register is empty and ready for a new char.
+         * See if ring buffer has data
+         */
+        if (buf_getsize(&(handle->write_buf)) == 0) {
+            /**
+             * No data is present. Wait for the TC bit to be set, then clear it
+             * By waiting here, we ensure the UART is done transmitting data.
+             */
+            while (READBITS(handle->regs->ISR, USART_ISR_TC) == 0) {
+            }
+            SETBITS(handle->regs->ICR, USART_ICR_TCCF);
+        } else {
+            // Read a byte from the ring buffer and send it
+            buf_read(&(handle->write_buf), &data);
+            // Send by writing to the TDR register
+            SETBITS(handle->regs->TDR, USART_TDR_TDR & data);
+        }
     }
 }

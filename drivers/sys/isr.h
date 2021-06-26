@@ -15,4 +15,15 @@ void set_UART_isr(void(*handler)(UART_periph_t));
  */
 void UART_isr(void);
 
+/**
+ * Simple function to disable interrupts.
+ * This sets PRIMASK to 1, effectively disabling preemption
+ */
+void disable_irq();
+
+/**
+ * Simple function to reenable interrupts.
+ * This sets PRIMASK to 0, effectively allowing preemption
+ */
+void enable_irq();
 #endif

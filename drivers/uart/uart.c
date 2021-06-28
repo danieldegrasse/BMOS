@@ -2,6 +2,7 @@
  * @file uart.c
  * Implements UART and LPUART support for STM32L4xxxx
  */
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -30,6 +31,7 @@ typedef struct {
     UART_config_t cfg;   /*!< User configuration for UART */
     USART_TypeDef *regs; /*!< Register access for this UART */
     UART_state_t state;  /*!< UART state (open or closed) */
+    bool tx_active;      /*!< Is UART transmission active */
     RingBuf_t write_buf; /*!< UART write ring buffer (outgoing data)*/
     RingBuf_t read_buf;  /*!< UART read ring buffer (incoming data)*/
 } UART_periph_status_t;
@@ -41,6 +43,7 @@ static uint8_t UART_RBUFFS[NUM_UARTS][UART_RINGBUF_SIZE];
 static uint8_t UART_WBUFFS[NUM_UARTS][UART_RINGBUF_SIZE];
 
 static void UART_interrupt(UART_periph_t source);
+static void UART_transmit(UART_periph_status_t *handle);
 /**
  * Opens a UART or LPUART device for read/write access
  * @param periph: Identifier of UART to open
@@ -68,29 +71,35 @@ UART_handle_t UART_open(UART_periph_t periph, UART_config_t *config,
     }
     // Set handle state to open
     handle->state = UART_dev_open;
-    memcpy(config, &handle->cfg, sizeof(UART_config_t));
+    handle->tx_active = false;
+    memcpy(&handle->cfg, config, sizeof(UART_config_t));
     // Setup read and write buffers
     buf_init(&handle->read_buf, UART_RBUFFS[periph], UART_RINGBUF_SIZE);
     buf_init(&handle->write_buf, UART_WBUFFS[periph], UART_RINGBUF_SIZE);
     /**
      * Record the UART peripheral address into the config structure
-     * Here we also enable the clock for the relevant UART device
+     * Here we also enable the clock for the relevant UART device,
+     * as well as the interrupt
      */
     switch (periph) {
     case LPUART_1:
         SETBITS(RCC->APB1ENR2, RCC_APB1ENR2_LPUART1EN);
+        enable_irq(LPUART1_IRQn);
         handle->regs = LPUART1;
         break;
     case USART_1:
         SETBITS(RCC->APB2ENR, RCC_APB2ENR_USART1EN);
+        enable_irq(USART1_IRQn);
         handle->regs = USART1;
         break;
     case USART_2:
         SETBITS(RCC->APB1ENR1, RCC_APB1ENR1_USART2EN);
+        enable_irq(USART2_IRQn);
         handle->regs = USART2;
         break;
     case USART_3:
         SETBITS(RCC->APB1ENR1, RCC_APB1ENR1_USART3EN);
+        enable_irq(USART3_IRQn);
         handle->regs = USART3;
         break;
     default:
@@ -211,7 +220,7 @@ UART_handle_t UART_open(UART_periph_t periph, UART_config_t *config,
             handle->regs->BRR = 0x56CE3;
             break;
         case UART_baud_115200:
-            handle->regs->BRR = 0x2B671;
+            handle->regs->BRR = 0x22B9;
             break;
         default:
             *err = ERR_BADPARAM;
@@ -258,13 +267,12 @@ UART_handle_t UART_open(UART_periph_t periph, UART_config_t *config,
         SETBITS(handle->regs->CR2, USART_CR2_ABREN);
     }
     // Enable the transmitter and receiver
-    SETBITS(handle->regs->CR1, USART_CR1_TE);
     SETBITS(handle->regs->CR1, USART_CR1_RE);
     // Register interrupt handler
     set_UART_isr(UART_interrupt);
-    // Enable transmit and receive interrupts
-    SETBITS(handle->regs->CR1, USART_CR1_TXEIE);
+    // Enable transmit complete and receive interrupts
     SETBITS(handle->regs->CR1, USART_CR1_RXNEIE);
+    SETBITS(handle->regs->CR1, USART_CR1_TCIE);
     return handle;
 }
 
@@ -282,12 +290,12 @@ int UART_read(UART_handle_t handle, uint8_t *buf, uint32_t len, syserr_t *err) {
      * First, we must disable interrupts. If we don't do so, then we may get
      * inconsistent data from the ring buffer
      */
-    disable_irq();
+    mask_irq();
     // Now, attempt to read data from the input ring buffer
     num_read =
         buf_readblock(&(((UART_periph_status_t *)handle)->read_buf), buf, len);
     // reenable interrupts
-    enable_irq();
+    unmask_irq();
     timeout = (int)((UART_periph_status_t *)handle)->cfg.UART_timeout;
     while (num_read < len && timeout != UART_TIMEOUT_NONE) {
         /**
@@ -310,9 +318,11 @@ int UART_read(UART_handle_t handle, uint8_t *buf, uint32_t len, syserr_t *err) {
                 }
             }
         }
+        mask_irq();
         // Now, there is data available in the buffer. Read it.
         num_read += buf_readblock(&(((UART_periph_status_t *)handle)->read_buf),
                                   buf + num_read, len - num_read);
+        unmask_irq();
     }
     return num_read;
 }
@@ -328,14 +338,21 @@ int UART_read(UART_handle_t handle, uint8_t *buf, uint32_t len, syserr_t *err) {
 int UART_write(UART_handle_t handle, uint8_t *buf, uint32_t len,
                syserr_t *err) {
     int num_written, timeout;
+    bool tx_inactive;
     /**
      *  First, disable interrupts so we do not get back data into the output
      * ring buffer
      */
-    disable_irq();
+    mask_irq();
+    tx_inactive = !((UART_periph_status_t *)handle)->tx_active;
     // Now write data to the ring buffer
     num_written = buf_writeblock(&(((UART_periph_status_t *)handle)->write_buf),
                                  buf, len);
+    unmask_irq();
+    if (tx_inactive) {
+        // We need to write data to the UART to start tranmission
+        UART_transmit((UART_periph_status_t *)handle);
+    }
     while (num_written < len && timeout != UART_TIMEOUT_NONE) {
         // Wait for there to be space in the ringbuffer
         while (buf_getsize(&(((UART_periph_status_t *)handle)->write_buf)) ==
@@ -354,11 +371,38 @@ int UART_write(UART_handle_t handle, uint8_t *buf, uint32_t len,
             }
         }
         // There is space to write data. Write it.
+        mask_irq();
         num_written +=
             buf_writeblock(&(((UART_periph_status_t *)handle)->write_buf),
                            buf + num_written, len - num_written);
+        unmask_irq();
+    }
+    // Now wait for all data to be sent
+    while (timeout != UART_TIMEOUT_NONE &&
+           buf_getsize(&(((UART_periph_status_t *)handle)->write_buf)) > 0) {
+        mask_irq();
+        unmask_irq();
     }
     return num_written;
+}
+
+/**
+ * Transmits data on the UART device provided.
+ * Can be used to transmit data if none is actively being sent.
+ */
+static void UART_transmit(UART_periph_status_t *handle) {
+    char data;
+    if (buf_getsize(&(handle->write_buf)) != 0) {
+        if (handle->tx_active == false) {
+            handle->tx_active = true;
+            SETBITS(handle->regs->CR1, USART_CR1_TE);
+            SETBITS(handle->regs->CR1, USART_CR1_TXEIE);
+        }
+        // Read a byte from the ring buffer and send it
+        buf_read(&(handle->write_buf), &data);
+        // Send by writing to the TDR register
+        handle->regs->TDR = USART_TDR_TDR & data;
+    }
 }
 
 /**
@@ -386,11 +430,14 @@ static void UART_interrupt(UART_periph_t source) {
             SETBITS(handle->regs->RQR, USART_RQR_RXFRQ);
         }
     }
-    if (READBITS(handle->regs->ISR, USART_ISR_TXE)) {
+    if (READBITS(handle->regs->ISR, USART_ISR_TXE) && handle->tx_active) {
         /**
          * Transmit data register is empty and ready for a new char.
-         * See if ring buffer has data
          */
+        UART_transmit(handle);
+    }
+    if (READBITS(handle->regs->ISR, USART_ISR_TC)) {
+        // Transmission is complete. If buffer is empty, TX is no longer active
         if (buf_getsize(&(handle->write_buf)) == 0) {
             /**
              * No data is present. Wait for the TC bit to be set, then clear it
@@ -398,12 +445,9 @@ static void UART_interrupt(UART_periph_t source) {
              */
             while (READBITS(handle->regs->ISR, USART_ISR_TC) == 0) {
             }
+            handle->tx_active = false;
+            CLEARBITS(handle->regs->CR1, USART_CR1_TXEIE);
             SETBITS(handle->regs->ICR, USART_ICR_TCCF);
-        } else {
-            // Read a byte from the ring buffer and send it
-            buf_read(&(handle->write_buf), &data);
-            // Send by writing to the TDR register
-            SETBITS(handle->regs->TDR, USART_TDR_TDR & data);
         }
     }
 }

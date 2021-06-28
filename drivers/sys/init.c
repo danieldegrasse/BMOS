@@ -27,18 +27,22 @@ static void NMI_irq(void);
  * Reset vector is required for code to run.
  */
 const uint32_t exception_vectors[] __attribute__((section(".vectors"))) = {
-    (uint32_t)&_stack_ptr,       /*!< address for top of stack */
-    (uint32_t)init,              /*!< Reset handler */
-    (uint32_t)NMI_irq,           /*!< NMI */
-    (uint32_t)DefaultISRHandler, /*!< Hard fault */
-    (uint32_t)DefaultISRHandler, /*!< Bus fault */
-    (uint32_t)DefaultISRHandler, /*!< Memory management fault */
-    (uint32_t)DefaultISRHandler, /*!< Usage fault */
-    (uint32_t)0,                 /*!< Reserved */
-    (uint32_t)DefaultISRHandler, /*!< SVCall */
-    (uint32_t)DefaultISRHandler, /*!< Debug Monitor */
-    (uint32_t)0,                 /*!< Reserved */
-    (uint32_t)DefaultISRHandler, /*!< PendSV */
+    (uint32_t)&_stack_ptr,       /*!< -16 address for top of stack */
+    (uint32_t)init,              /*!< -15 Reset handler */
+    (uint32_t)NMI_irq,           /*!< -14 NMI */
+    (uint32_t)DefaultISRHandler, /*!< -13 Hard fault */
+    (uint32_t)DefaultISRHandler, /*!< -12 Memory management fault */
+    (uint32_t)DefaultISRHandler, /*!< -11 Bus fault */
+    (uint32_t)DefaultISRHandler, /*!< -10 Usage fault */
+    (uint32_t)0,                 /*!< -9 Reserved */
+    (uint32_t)0,                 /*!< -8 Reserved */
+    (uint32_t)0,                 /*!< -7 Reserved */
+    (uint32_t)0,                 /*!< -6 Reserved */
+    (uint32_t)DefaultISRHandler, /*!< -5 SVCall */
+    (uint32_t)DefaultISRHandler, /*!< -4 Debug Monitor */
+    (uint32_t)0,                 /*!< -3 Reserved */
+    (uint32_t)DefaultISRHandler, /*!< -2 PendSV */
+    (uint32_t)DefaultISRHandler, /*!< -1 Systick */
     (uint32_t)DefaultISRHandler, /*!< 0 Window Watchdog */
     (uint32_t)DefaultISRHandler, /*!< 1 PVD/PVM1 thru EXTI */
     (uint32_t)DefaultISRHandler, /*!< 2 RTC Tamper or timestamp */

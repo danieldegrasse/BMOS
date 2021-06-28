@@ -23,27 +23,27 @@ syserr_t GPIO_config(GPIO_port_t port, GPIO_pin_t pin, GPIO_config_t *config) {
     switch (port) {
     case GPIO_PORT_A:
         // Enable GPIOA
-        SETBITS(RCC->AHB2ENR, RCC_AHB2RSTR_GPIOARST);
+        SETBITS(RCC->AHB2ENR, RCC_AHB2ENR_GPIOAEN);
         periph = GPIOA;
         break;
     case GPIO_PORT_B:
-        SETBITS(RCC->AHB2ENR, RCC_AHB2RSTR_GPIOBRST);
+        SETBITS(RCC->AHB2ENR, RCC_AHB2ENR_GPIOBEN);
         periph = GPIOB;
         break;
     case GPIO_PORT_C:
-        SETBITS(RCC->AHB2ENR, RCC_AHB2RSTR_GPIOCRST);
+        SETBITS(RCC->AHB2ENR, RCC_AHB2ENR_GPIOCEN);
         periph = GPIOC;
         break;
     case GPIO_PORT_D:
-        SETBITS(RCC->AHB2ENR, RCC_AHB2RSTR_GPIODRST);
+        SETBITS(RCC->AHB2ENR, RCC_AHB2ENR_GPIODEN);
         periph = GPIOD;
         break;
     case GPIO_PORT_E:
-        SETBITS(RCC->AHB2ENR, RCC_AHB2RSTR_GPIOERST);
+        SETBITS(RCC->AHB2ENR, RCC_AHB2ENR_GPIOEEN);
         periph = GPIOE;
         break;
     case GPIO_PORT_H:
-        SETBITS(RCC->AHB2ENR, RCC_AHB2RSTR_GPIOHRST);
+        SETBITS(RCC->AHB2ENR, RCC_AHB2ENR_GPIOHEN);
         periph = GPIOH;
         break;
     default:

@@ -19,11 +19,23 @@ void UART_isr(void);
  * Simple function to disable interrupts.
  * This sets PRIMASK to 1, effectively disabling preemption
  */
-void disable_irq();
+void mask_irq();
 
 /**
  * Simple function to reenable interrupts.
  * This sets PRIMASK to 0, effectively allowing preemption
  */
-void enable_irq();
+void unmask_irq();
+
+/**
+ * Disable interrupt number "num"
+ * @param num: Interrupt number to disable
+ */
+void disable_irq(uint32_t num);
+
+/**
+ * Enable interrupt number "num"
+ * @param num: Interrupt number to enable
+ */
+void enable_irq(uint32_t num);
 #endif

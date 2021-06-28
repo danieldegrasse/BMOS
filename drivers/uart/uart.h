@@ -106,6 +106,17 @@ typedef struct UART_config {
     UART_timeout_t UART_timeout;          /*!< UART read/write timeout */
 } UART_config_t;
 
+#define UART_DEFAULT_CONFIG {\
+    .UART_wordlen = UART_word_8n1, \
+    .UART_stopbit = UART_onestop, \
+    .UART_parity = UART_parity_disabled,\
+    .UART_pin_swap = UART_pin_normal, \
+    .UART_bit_order = UART_lsb_first, \
+    .UART_flowcontrol = UART_no_flow, \
+    .UART_baud_rate = UART_baud_115200, \
+    .UART_timeout = UART_TIMEOUT_INF\
+}
+
 typedef void *UART_handle_t;
 
 /**

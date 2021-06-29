@@ -3,124 +3,286 @@
  * Implements system clock support, including setting the system clock
  * source and delaying by a defined number of milliseconds
  */
+#include <stdlib.h>
 
 #include <device/device.h>
 #include <util/util.h>
 
 #include "clock.h"
 
-// Records the current clock source
-static sysclock_src_t current_clk = CLK_MSI_4MHz;
-
-typedef enum {
-    MSICLK_4MHz,
-    MSICLK_32MHz,
-} msiclk_speed_t;
+// Static variables to record current clock frequencies and states
+static sysclock_src_t system_clk_src = CLK_MSI; // Default clock is MSI
+static uint64_t sysclk_freq = MSI_freq_4MHz;    // Default frequency is 4 MHz
+static MSI_Freq_t msi_freq = MSI_freq_4MHz;     // MSI clock defaults to 4 MHz
+static uint64_t pll_freq = PLL_freq_disabled;   // PLL is disabled at boot
+static HSI16_Freq_t hsi16_freq =
+    HSI16_freq_disabled;                          // HSI16 is disabled at boot
+static LSI_Freq_t lsi32_freq = LSI_freq_disabled; // LSI is disabled at boot
+static uint64_t apb_freq = MSI_freq_4MHz;  // src is sysclock divided by 1
+static uint64_t apb1_freq = MSI_freq_4MHz; // src is sysclock divided by 1
+static uint64_t apb2_freq = MSI_freq_4MHz; // src is sysclock divided by 1
 
 // Local functions
-static void enable_msiclk(msiclk_speed_t spd);
-static void update_flash_acr(sysclock_src_t src);
+static syserr_t update_flash_ws(uint64_t new_freq);
+static syserr_t msiclk_init(clock_cfg_t *cfg);
+static syserr_t pllclk_init(clock_cfg_t *cfg);
 
 /**
- * Selects and initializes the system clock
- * @param src: System clock to utilize
+ * Initializes device clocks. This function should be called at boot
+ * @return SYS_OK on successful configuration, or ERR_BADPARAM if a clock
+ * parameter is invalid
  */
-void select_sysclock(sysclock_src_t src) {
-    switch (src) {
-    case CLK_MSI_32MHz:
-        // Enable the MSI clock at 32MHz
-        enable_msiclk(MSICLK_32MHz);
-        /**
-         * Update the flash acr register wait states
-         * (see section 3.3.3 of technical reference manual)
-         */
-        if (current_clk < src) {
-            update_flash_acr(src);
+syserr_t clock_init(clock_cfg_t *cfg) {
+    syserr_t ret;
+    uint64_t new_apb_freq, new_sysclock_freq;
+    uint32_t SW, apb_scale;
+    // Check parameters
+    if (cfg == NULL) {
+        return ERR_BADPARAM;
+    }
+    /* ------- Configure the MSI clock --------- */
+    /**
+     * If the PLL is the system clock and is sourced from MSI, or MSI is the
+     * system clock, we must update the flash wait state
+     * This is because modifying the MSI clock will change the system clock,
+     * which requires changing the flash wait state.
+     */
+    if (system_clk_src == CLK_MSI ||
+        (READBITS(RCC->PLLCFGR, RCC_PLLCFGR_PLLSRC_MSI) ==
+             RCC_PLLCFGR_PLLSRC_MSI &&
+         system_clk_src == CLK_PLL)) {
+        if (READBITS(RCC->PLLCFGR, RCC_PLLCFGR_PLLSRC_MSI) ==
+            RCC_PLLCFGR_PLLSRC_MSI) {
+            // PLL frequency should be updated
+            pll_freq = (cfg->MSI_freq / msi_freq) * pll_freq;
         }
-        /**
-         * Select MSI as the system clock source by clearing the
-         * SW bits in RCC_CFGR
-         */
-        CLEARBITS(RCC->CFGR, RCC_CFGR_SW);
-        // Wait for the system clock to set
-        while (READBITS(RCC->CFGR, RCC_CFGR_SWS_Msk) != RCC_CFGR_SWS_MSI)
-            ;
-        // System clock is slowing, we need to update flash acr as last step
-        if (current_clk > src) {
-            update_flash_acr(src);
+        // Flash wait state must be updated
+        // Calculate expected HCLK (apb) frequency
+        switch (system_clk_src) {
+        case CLK_PLL:
+            if (READBITS(RCC->PLLCFGR, RCC_PLLCFGR_PLLSRC_MSI) ==
+                RCC_PLLCFGR_PLLSRC_MSI) {
+                // PLL frequency should be updated
+                // new HCLK frequency derives from PLL, which derives from MSI
+                new_apb_freq = (cfg->MSI_freq / msi_freq) * apb_freq;
+                // system frequency must also be updated
+                sysclk_freq = (cfg->MSI_freq / msi_freq) * sysclk_freq;
+            } else {
+                // Code is not designed to work with PLL sources that aren't MSI
+                return ERR_NOSUPPORT;
+            }
+            break;
+        case CLK_MSI:
+            // new MSI frequency will be HCLK
+            new_apb_freq = cfg->MSI_freq;
+            break;
+        case CLK_HSI16:
+            // Should not occur
+            break;
         }
+        if (new_apb_freq > apb_freq) {
+            // HCLK is increasing, we must increase wait state first
+            ret = update_flash_ws(new_apb_freq);
+            if (ret != SYS_OK) {
+                return ret;
+            }
+            // Now update the MSI clock speed
+            ret = msiclk_init(cfg);
+            if (ret != SYS_OK) {
+                return ret;
+            }
+        } else {
+            // HCLK is decreasing, we must decrease wait state last
+            ret = msiclk_init(cfg);
+            if (ret != SYS_OK) {
+                return ret;
+            }
+            ret = update_flash_ws(new_apb_freq);
+            if (ret != SYS_OK) {
+                return ret;
+            }
+        }
+    } else {
+        // System clock will not be affected. Set MSI independently
+        ret = msiclk_init(cfg);
+        if (ret != SYS_OK) {
+            return ret;
+        }
+    }
+    /* ------------ Configure the PLL clock ------------------ */
+    if (READBITS(RCC->CFGR, RCC_CFGR_SWS_PLL) == RCC_CFGR_SWS_PLL) {
+        // PLL clock cannot be modified, is it is in use by system
+        return ERR_BADPARAM;
+    } else {
+        // Start the PLL clock
+        ret = pllclk_init(cfg);
+        if (ret != SYS_OK) {
+            return ret;
+        }
+    }
+    /* -------- HSI16 Configuration ----------------- */
+    if (cfg->HSI16_freq == HSI16_freq_16MHz) {
+        // Enable the HSI16 oscillator
+        SETBITS(RCC->CR, RCC_CR_HSION);
+        while (READBITS(RCC->CR, RCC_CR_HSIRDY) == 0)
+            ; // Wait for clock to stabilize
+    } else {
+        // Disable HSI16
+        CLEARBITS(RCC->CR, RCC_CR_HSION);
+    }
+    // Record new hsi clock
+    hsi16_freq = cfg->HSI16_freq;
+    /* -------- LSI Configuration ----------------- */
+    if (cfg->LSI_freq == LSI_freq_32MHz) {
+        // Enable the LSI oscillator
+        SETBITS(RCC->CSR, RCC_CSR_LSION);
+        while (READBITS(RCC->CSR, RCC_CSR_LSIRDY) == 0)
+            ; // Wait for clock to stabilize
+    } else {
+        // Disable LSI
+        CLEARBITS(RCC->CSR, RCC_CSR_LSION);
+    }
+    // Record new lsi clock
+    lsi32_freq = cfg->LSI_freq;
+    /* -------- System Clock Configuration ----------- */
+    // Calculate new system clock frequency
+    switch (cfg->sysclk_src) {
+    case CLK_MSI:
+        new_sysclock_freq = msi_freq;
+        SW = RCC_CFGR_SW_MSI;
         break;
-    case CLK_PLL_80MHz:
-        // First disable the PLL to configure it
-        CLEARBITS(RCC->CR, RCC_CR_PLLON);
-        // Wait for the PLL to shutdown
-        while (READBITS(RCC->CR, RCC_CR_PLLRDY))
-            ;
-        /**
-         * Now that PLL is off, configure it. To get an 80MHz clock we must
-         * chain the PLLSAI1 clock to the VCO input frequency, multiply the
-         * VCO output frequency, then divide the VCO output frequency to
-         * generate PLLCLK
-         */
-        /* First, we must enable the MSI clock at 4MHz: */
-        enable_msiclk(MSICLK_4MHz);
-        /* Now we can set the PLLSAI1 clock to use the MSI clock */
-        CLEARBITS(RCC->PLLCFGR, RCC_PLLCFGR_PLLSRC);
-        SETBITS(RCC->PLLCFGR, RCC_PLLCFGR_PLLSRC_MSI);
-        /* Set the VCO input frequency division to 1. VCO input will be 4MHz */
-        CLEARBITS(RCC->PLLCFGR, RCC_PLLCFGR_PLLM);
-        /* Set the VCO frequency multiplier to be 40, so VCO output is 160MHz */
-        CLEARBITS(RCC->PLLCFGR, RCC_PLLCFGR_PLLN_5 | RCC_PLLCFGR_PLLN_3);
-        /* Ensure the division factor for PLLCLK is 2, giving 80MHz */
-        CLEARBITS(RCC->PLLCFGR, RCC_PLLCFGR_PLLR);
-        /* Enable PLLCLK. It does not appear PLLSAI1 needs to be enabled */
-        SETBITS(RCC->PLLCFGR, RCC_PLLCFGR_PLLREN);
-        /* Reenable the PLL */
-        SETBITS(RCC->CR, RCC_CR_PLLON);
-        // Wait for the PLL to stabilize
-        while (READBITS(RCC->CR, RCC_CR_PLLRDY) == 0) {
-        }
-        /**
-         * This is our fastest clock (cpu speed will always be increasing)
-         * so update ACR first
-         */
-        update_flash_acr(src);
-        // Now switch the system clock to the PLL
-        CLEARBITS(RCC->CFGR, RCC_CFGR_SW);
-        SETBITS(RCC->CFGR, RCC_CFGR_SW_PLL);
-        // Wait for the system clock to set
-        while (READBITS(RCC->CFGR, RCC_CFGR_SWS_Msk) != RCC_CFGR_SWS_PLL)
-            ;
+    case CLK_PLL:
+        new_sysclock_freq = pll_freq;
+        SW = RCC_CFGR_SW_PLL;
         break;
-    case CLK_MSI_4MHz:
-        // This is the default option, so the cases are combined
-    default:
-        src = CLK_MSI_4MHz;
-        /*
-         * Although these steps are not required at boot, this function
-         * should be able to switch the clock back the the MSI 4MHz source as
-         * well
-         */
-        // Enable the msi clock running at 4MHz
-        enable_msiclk(MSICLK_4MHz);
-        /**
-         * Select MSI as the system clock source by clearing the
-         * SW bits in RCC_CFGR
-         */
-        CLEARBITS(RCC->CFGR, RCC_CFGR_SW);
-        // Wait for the system clock to set
-        while (READBITS(RCC->CFGR, RCC_CFGR_SWS_Msk) != RCC_CFGR_SWS_MSI)
-            ;
-        /**
-         * This is our slowest clock (cpu speed will always be increasing)
-         * so update ACR last
-         */
-        update_flash_acr(src);
+    case CLK_HSI16:
+        new_sysclock_freq = hsi16_freq;
+        SW = RCC_CFGR_SW_HSI;
         break;
     }
-    // Record the new clock speed
-    current_clk = src;
+    if (new_sysclock_freq > 80000000UL || new_sysclock_freq == 0) {
+        return ERR_BADPARAM;
+    }
+    // We are changing system clock frequency, so we must change flash ws
+    if (new_sysclock_freq > sysclk_freq) {
+        // Update flash ws first
+        ret = update_flash_ws(new_sysclock_freq);
+        if (ret != SYS_OK) {
+            return ret;
+        }
+        // Now set system clock
+        MODIFY_REG(RCC->CFGR, RCC_CFGR_SW, SW);
+        // Make sure change propigated
+        if (READBITS(RCC->CFGR, RCC_CFGR_SW) != SW) {
+            return ERR_DEVICE;
+        }
+    } else {
+        // Now set system clock
+        MODIFY_REG(RCC->CFGR, RCC_CFGR_SW, SW);
+        // Make sure change propigated
+        if (READBITS(RCC->CFGR, RCC_CFGR_SWS) != SW) {
+            return ERR_DEVICE;
+        }
+        // Update flash ws last
+        ret = update_flash_ws(new_sysclock_freq);
+        if (ret != SYS_OK) {
+            return ret;
+        }
+    }
+    // Record new system clock
+    sysclk_freq = new_sysclock_freq;
+    system_clk_src = cfg->sysclk_src;
+    // Record HCLK frequency
+    apb_freq = sysclk_freq;
+    /* ------------------ APB1 and APB2 divisors ---------------- */
+    switch (cfg->APB1_scale) {
+    case APB_scale_div1:
+        apb_scale = RCC_CFGR_PPRE1_DIV1;
+        apb1_freq = apb_freq;
+        break;
+    case APB_scale_div2:
+        apb_scale = RCC_CFGR_PPRE1_DIV2;
+        apb1_freq = apb_freq >> 1;
+        break;
+    case APB_scale_div4:
+        apb_scale = RCC_CFGR_PPRE1_DIV4;
+        apb1_freq = apb_freq >> 2;
+        break;
+    case APB_scale_div8:
+        apb_scale = RCC_CFGR_PPRE1_DIV8;
+        apb1_freq = apb_freq >> 3;
+        break;
+    case APB_scale_div16:
+        apb_scale = RCC_CFGR_PPRE1_DIV16;
+        apb1_freq = apb_freq >> 4;
+        break;
+    }
+    MODIFY_REG(RCC->CFGR, RCC_CFGR_PPRE1, apb_scale);
+    // APB2
+    switch (cfg->APB2_scale) {
+    case APB_scale_div1:
+        apb_scale = RCC_CFGR_PPRE2_DIV1;
+        apb2_freq = apb_freq;
+        break;
+    case APB_scale_div2:
+        apb_scale = RCC_CFGR_PPRE2_DIV2;
+        apb2_freq = apb_freq >> 1;
+        break;
+    case APB_scale_div4:
+        apb_scale = RCC_CFGR_PPRE2_DIV4;
+        apb2_freq = apb_freq >> 2;
+        break;
+    case APB_scale_div8:
+        apb_scale = RCC_CFGR_PPRE2_DIV8;
+        apb2_freq = apb_freq >> 3;
+        break;
+    case APB_scale_div16:
+        apb_scale = RCC_CFGR_PPRE1_DIV16;
+        apb2_freq = apb_freq >> 4;
+        break;
+    }
+    MODIFY_REG(RCC->CFGR, RCC_CFGR_PPRE2, apb_scale);
+    return SYS_OK;
 }
+
+/*
+ * Returns the system clock, in Hz
+ */
+uint64_t sysclock_freq() { return sysclk_freq; }
+
+/**
+ * Returns the msi clock, in Hz
+ * A value of 0 indicates the clock is inactive
+ */
+uint64_t msiclock_freq() { return msi_freq; }
+
+/**
+ * Returns the PLL frequency, in Hz
+ * A value of 0 indicates the clock is inactive
+ */
+uint64_t pllclock_freq() { return pll_freq; }
+
+/**
+ * Returns the PCLK1 (APB1) frequency
+ */
+uint64_t pclk1_freq() { return apb1_freq; }
+
+/**
+ * Returns the PCLK2 (APB2) frequency
+ */
+uint64_t pclk2_freq() { return apb2_freq; }
+
+/**
+ * Returns the LSI frequency
+ * A value of zero indicates the oscillator is disabled
+ */
+uint64_t lsi_freq() { return lsi32_freq; }
+
+/**
+ * Returns the HSI16 frequency
+ * A value of zero indicates the oscillator is disabled
+ */
+uint64_t hsi_freq() { return hsi16_freq; }
 
 /**
  * Delays the system by a given number of milliseconds.
@@ -129,21 +291,7 @@ void select_sysclock(sysclock_src_t src) {
  */
 void delay_ms(uint32_t delay) {
     unsigned long target, increment;
-    switch (current_clk) {
-    case CLK_MSI_32MHz:
-        increment = 32000UL;
-        break;
-    case CLK_MSI_4MHz:
-        increment = 4000UL;
-        break;
-    case CLK_PLL_80MHz:
-        increment = 80000UL;
-        break;
-    default:
-        // Should not occur, but in this case just assume default 4MHz CLK
-        increment = 4000UL;
-        break;
-    }
+    increment = sysclk_freq / 1000UL;
     target = increment * delay;
     /**
      * To approximate the correct delay well, we will use a for loop with a
@@ -155,65 +303,202 @@ void delay_ms(uint32_t delay) {
 }
 
 /**
- * Enables the MSI clock, runnining at the selected speed
- * @param spd: Selected speed for MSI clock.
+ * Starts the PLL clock, at the selected frequency
+ * @param cfg: clock configuration structure
  */
-static void enable_msiclk(msiclk_speed_t spd) {
+static syserr_t pllclk_init(clock_cfg_t *cfg) {
+    uint32_t PLLR;
+    if (!cfg->PLL_en) {
+        // Disable the PLL
+        CLEARBITS(RCC->CR, RCC_CR_PLLON);
+        CLEARBITS(RCC->PLLCFGR, RCC_PLLCFGR_PLLREN);
+        pll_freq = PLL_freq_disabled;
+        return SYS_OK;
+    }
+    // First disable the PLL to configure it
+    CLEARBITS(RCC->CR, RCC_CR_PLLON);
+    // Wait for the PLL to shutdown
+    while (READBITS(RCC->CR, RCC_CR_PLLRDY))
+        ;
+    /**
+     * Now that PLL is off, configure it. we must
+     * chain the PLLSAI1 clock to the VCO input frequency, multiply the
+     * VCO output frequency, then divide the VCO output frequency to
+     * generate PLLCLK
+     */
+    /* Now we can set the PLLSAI1 clock to use the MSI clock */
+    MODIFY_REG(RCC->PLLCFGR, RCC_PLLCFGR_PLLSRC, RCC_PLLCFGR_PLLSRC_MSI);
+    // Set the VCO input frequency division to 1.
+    CLEARBITS(RCC->PLLCFGR, RCC_PLLCFGR_PLLM);
+    // Set the VCO frequency multiplier
+    if (cfg->PLLN_mul > 7 && cfg->PLLN_mul < 87) {
+        MODIFY_REG(RCC->PLLCFGR, RCC_PLLCFGR_PLLN,
+                   cfg->PLLN_mul << RCC_PLLCFGR_PLLN_Pos);
+    } else {
+        // PLLN is out of range
+        return ERR_BADPARAM;
+    }
+    // Set PLLR to divide the VCO output frequency
+    switch (cfg->PLLR_div) {
+    case PLLR_2:
+        PLLR = 0;
+        break;
+    case PLLR_4:
+        PLLR = RCC_PLLCFGR_PLLR_0;
+        break;
+    case PLLR_6:
+        PLLR = RCC_PLLCFGR_PLLR_1;
+        break;
+    case PLLR_8:
+        PLLR = RCC_PLLCFGR_PLLR_1 | RCC_PLLCFGR_PLLR_0;
+        break;
+    }
+    MODIFY_REG(RCC->PLLCFGR, RCC_PLLCFGR_PLLR, PLLR);
+    /* Reenable the PLL */
+    SETBITS(RCC->CR, RCC_CR_PLLON);
+    // Wait for the PLL to stabilize
+    while (READBITS(RCC->CR, RCC_CR_PLLRDY) == 0)
+        ;
+    // Enable the PLL output
+    SETBITS(RCC->PLLCFGR, RCC_PLLCFGR_PLLREN);
+    // Update the PLL frequency
+    pll_freq = (cfg->PLLN_mul / cfg->PLLR_div) * msi_freq;
+    return SYS_OK;
+}
+
+/**
+ * Starts the MSI clock, at the selected frequency
+ * @param cfg: clock configuration structure
+ */
+static syserr_t msiclk_init(clock_cfg_t *cfg) {
+    uint32_t range;
+    // Update the MSI clock frequency
+    msi_freq = cfg->MSI_freq;
+    // Select the MSI frequency range
+    switch (cfg->MSI_freq) {
+    case MSI_freq_disabled:
+        // Disable the MSI clock and return
+        CLEARBITS(RCC->CR, RCC_CR_MSION);
+        return SYS_OK;
+        break;
+    case MSI_freq_100kHz:
+        range = RCC_CR_MSIRANGE_0;
+        break;
+    case MSI_freq_200kHz:
+        range = RCC_CR_MSIRANGE_1;
+        break;
+    case MSI_freq_400kHz:
+        range = RCC_CR_MSIRANGE_2;
+        break;
+    case MSI_freq_800kHz:
+        range = RCC_CR_MSIRANGE_3;
+        break;
+    case MSI_freq_1MHz:
+        range = RCC_CR_MSIRANGE_4;
+        break;
+    case MSI_freq_2MHz:
+        range = RCC_CR_MSIRANGE_5;
+        break;
+    case MSI_freq_4MHz:
+        range = RCC_CR_MSIRANGE_6;
+        break;
+    case MSI_freq_8MHz:
+        range = RCC_CR_MSIRANGE_7;
+        break;
+    case MSI_freq_16MHz:
+        range = RCC_CR_MSIRANGE_8;
+        break;
+    case MSI_freq_24MHz:
+        range = RCC_CR_MSIRANGE_9;
+        break;
+    case MSI_freq_32MHz:
+        range = RCC_CR_MSIRANGE_10;
+        break;
+    case MSI_freq_48MHz:
+        range = RCC_CR_MSIRANGE_11;
+        break;
+    }
     // Ensure the clock is enabled
     SETBITS(RCC->CR, RCC_CR_MSION);
     // Wait for the MSI clock to be ready by polling MSIRDY bit
     while (READBITS(RCC->CR, RCC_CR_MSIRDY) == 0)
         ;
-    // Now select range in the MSIRANGE register
-    CLEARBITS(RCC->CR, RCC_CR_MSIRANGE_Msk);
-    switch (spd) {
-    case MSICLK_4MHz:
-        SETBITS(RCC->CR, RCC_CR_MSIRANGE_6);
-        break;
-    case MSICLK_32MHz:
-        SETBITS(RCC->CR, RCC_CR_MSIRANGE_10);
-        break;
-    }
     /**
      * Now, switch the selection register for MSI range to MSIRANGE
      * The selection register at startup only allows up to 8MHz
      */
     SETBITS(RCC->CR, RCC_CR_MSIRGSEL);
-    // Wait for the MSI clock to be ready by polling MSIRDY bit
-    while (READBITS(RCC->CR, RCC_CR_MSIRDY) == 0)
-        ;
+    MODIFY_REG(RCC->CR, RCC_CR_MSIRANGE_Msk, range);
+    return SYS_OK;
 }
 
-static void update_flash_acr(sysclock_src_t src) {
+/**
+ * Updates flash wait state to the correct value for the new provided
+ * frequency
+ * @param new_freq: new HCLK frequency in Hz
+ */
+static syserr_t update_flash_ws(uint64_t new_freq) {
+    uint32_t vcore_range;
+    uint32_t latency;
     /**
      * When the system clock frequency changes, we must update the
-     * access control wait state for the flash to match. We assume
-     * we are in vcore range 1 (high performance mode)
+     * access control wait state for the flash to match.
      */
-    CLEARBITS(FLASH->ACR, FLASH_ACR_LATENCY_Msk);
-    switch (src) {
-    case CLK_MSI_4MHz:
-        // 0 wait states. This corresponds to 0b000 (already set)
-        // Wait for the wait state to set
-        while (READBITS(FLASH->ACR, FLASH_ACR_LATENCY_Msk) !=
-               FLASH_ACR_LATENCY_0WS)
-            ;
-        break;
-    case CLK_MSI_32MHz:
-        // 1 wait state
-        SETBITS(FLASH->ACR, FLASH_ACR_LATENCY_2WS);
-        // Wait for the wait state to set
-        while (READBITS(FLASH->ACR, FLASH_ACR_LATENCY_Msk) !=
-               FLASH_ACR_LATENCY_2WS)
-            ;
-        break;
-    case CLK_PLL_80MHz:
-        // 4 wait states
-        SETBITS(FLASH->ACR, FLASH_ACR_LATENCY_4WS);
-        // Wait for the wait state to set
-        while (READBITS(FLASH->ACR, FLASH_ACR_LATENCY_Msk) !=
-               FLASH_ACR_LATENCY_4WS)
-            ;
-        break;
+    // Find the VCORE range
+    if (READBITS(RCC->APB1ENR1, RCC_APB1ENR1_PWREN) == 0) {
+        // Power up the PWR peripheral to read VCORE bit
+        SETBITS(RCC->APB1ENR1, RCC_APB1ENR1_PWREN);
+        vcore_range = READBITS(PWR->CR1, PWR_CR1_VOS_Msk);
+        // Turn PWN peripheral off again
+        CLEARBITS(RCC->APB1ENR1, RCC_APB1ENR1_PWREN);
+    } else {
+        // PWR peripheral is on, just read bits
+        vcore_range = READBITS(PWR->CR1, PWR_CR1_VOS_Msk);
+    }
+    /**
+     * The relation between VCORE ranges and wait states is given on p.79 of
+     * technical ref manual
+     */
+    if (vcore_range == PWR_CR1_VOS_0) {
+        // We are in VCORE range 1
+        if (new_freq > 64000000UL) {
+            // >64MHz, WS 4
+            latency = FLASH_ACR_LATENCY_4WS;
+        } else if (new_freq > 48000000UL) {
+            // >48MHz, WS 3
+            latency = FLASH_ACR_LATENCY_3WS;
+        } else if (new_freq > 32000000UL) {
+            // >32MHz, WS 2
+            latency = FLASH_ACR_LATENCY_2WS;
+        } else if (new_freq > 16000000UL) {
+            // >16MHz, WS1
+            latency = FLASH_ACR_LATENCY_1WS;
+        } else {
+            // WS0
+            latency = FLASH_ACR_LATENCY_0WS;
+        }
+    } else {
+        // We are in VCORE range 2
+        if (new_freq > 18000000UL) {
+            // >18MHz, WS 3
+            latency = FLASH_ACR_LATENCY_3WS;
+        } else if (new_freq > 12000000UL) {
+            // >12MHz, WS 2
+            latency = FLASH_ACR_LATENCY_2WS;
+        } else if (new_freq > 6000000UL) {
+            // >6MHz, WS1
+            latency = FLASH_ACR_LATENCY_1WS;
+        } else {
+            // WS0
+            latency = FLASH_ACR_LATENCY_0WS;
+        }
+    }
+    /* Set the new latency in the flash ACR register */
+    MODIFY_REG(FLASH->ACR, FLASH_ACR_LATENCY_Msk, latency);
+    // Verify that the new latency was set
+    if (READBITS(FLASH->ACR, FLASH_ACR_LATENCY_Msk) != latency) {
+        return ERR_DEVICE;
+    } else {
+        return SYS_OK;
     }
 }

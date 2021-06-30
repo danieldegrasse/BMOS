@@ -17,7 +17,7 @@ extern unsigned char _ebss;
 extern unsigned char _stack_ptr;
 
 // Function prototypes
-void init(void);
+static void system_init(void);
 extern void main(void); // Assume that the user will provide a main function
 
 static void DefaultISRHandler(void);
@@ -27,21 +27,21 @@ static void DefaultISRHandler(void);
  */
 const uint32_t exception_vectors[] __attribute__((section(".vectors"))) = {
     (uint32_t)&_stack_ptr,       /*!< -16 address for top of stack */
-    (uint32_t)init,              /*!< -15 Reset handler */
+    (uint32_t)system_init,              /*!< -15 Reset handler */
     (uint32_t)NMI_irq,           /*!< -14 NMI */
-    (uint32_t)DefaultISRHandler, /*!< -13 Hard fault */
-    (uint32_t)DefaultISRHandler, /*!< -12 Memory management fault */
-    (uint32_t)DefaultISRHandler, /*!< -11 Bus fault */
-    (uint32_t)DefaultISRHandler, /*!< -10 Usage fault */
+    (uint32_t)HardFault_irq, /*!< -13 Hard fault */
+    (uint32_t)MMFault_irq, /*!< -12 Memory management fault */
+    (uint32_t)BusFault_irq, /*!< -11 Bus fault */
+    (uint32_t)UsageFault_irq, /*!< -10 Usage fault */
     (uint32_t)0,                 /*!< -9 Reserved */
     (uint32_t)0,                 /*!< -8 Reserved */
     (uint32_t)0,                 /*!< -7 Reserved */
     (uint32_t)0,                 /*!< -6 Reserved */
-    (uint32_t)DefaultISRHandler, /*!< -5 SVCall */
-    (uint32_t)DefaultISRHandler, /*!< -4 Debug Monitor */
+    (uint32_t)SVCall_irq, /*!< -5 SVCall */
+    (uint32_t)DebugMonitor_irq, /*!< -4 Debug Monitor */
     (uint32_t)0,                 /*!< -3 Reserved */
-    (uint32_t)DefaultISRHandler, /*!< -2 PendSV */
-    (uint32_t)DefaultISRHandler, /*!< -1 Systick */
+    (uint32_t)PendSV_irq, /*!< -2 PendSV */
+    (uint32_t)Systick_irq, /*!< -1 Systick */
     (uint32_t)DefaultISRHandler, /*!< 0 Window Watchdog */
     (uint32_t)DefaultISRHandler, /*!< 1 PVD/PVM1 thru EXTI */
     (uint32_t)DefaultISRHandler, /*!< 2 RTC Tamper or timestamp */
@@ -139,7 +139,7 @@ static void DefaultISRHandler(void) {
  *
  * Reference: http://eleceng.dit.ie/frank/arm/BareMetalTILM4F/index.html
  */
-void init(void) {
+static void system_init(void) {
     unsigned char *src;
     unsigned char *dst;
     unsigned int len;
@@ -157,6 +157,8 @@ void init(void) {
     while (len--) {
         *dst++ = 0;
     }
+    // Now that data and BSS segments are populated, initialize clocks
+    reset_clocks();
     // init is done. Call the main entry point.
     main();
 

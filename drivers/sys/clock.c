@@ -245,6 +245,23 @@ syserr_t clock_init(clock_cfg_t *cfg) {
     return SYS_OK;
 }
 
+/**
+ * Resets all system clocks to known good values.
+ * This function should be called before main.
+ * After calling this function, the device will be using the MSI clock at
+ * 4MHZ as the system clock
+ */
+void reset_clocks() {
+    // RCC register reset values are taken from p.243 of the reference manual
+    RCC->CR = 0x63U;
+    RCC->CFGR = 0x00U;
+    RCC->PLLCFGR = 0x1000U;
+    RCC->PLLSAI1CFGR = 0x00U;
+    RCC->CIER = 0x00U;
+    // Additionally, reset the flash access control register
+    FLASH->ACR = 0x600U;
+}
+
 /*
  * Returns the system clock, in Hz
  */

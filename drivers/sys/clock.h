@@ -152,4 +152,12 @@ uint64_t hsi_freq();
  */
 void delay_ms(uint32_t delay);
 
+/**
+ * Resets all system clocks to known good values.
+ * This function should be called before main.
+ * After calling this function, the device will be using the MSI clock at
+ * 4MHZ as the system clock
+ */
+void reset_clocks();
+
 #endif

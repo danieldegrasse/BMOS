@@ -39,7 +39,8 @@ typedef enum {
     LSI_freq_disabled,
 } LSI_Freq_t;
 
-#define PLL_freq_disabled 0UL
+#define CLOCK_DISABLED 0UL // Disabled clocks will return frequency of 0
+#define PLL_freq_disabled CLOCK_DISABLED
 
 /**
  * PLL frequency scaling options.

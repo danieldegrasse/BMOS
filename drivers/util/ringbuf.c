@@ -33,7 +33,7 @@ syserr_t buf_peek(RingBuf_t *buf, char *data) {
         return ERR_NOMEM;
     }
     // If character is present, copy it to output
-    *data = *((char*)buf->read_offset);
+    *data = *((char *)buf->read_offset);
     return SYS_OK;
 }
 
@@ -44,7 +44,7 @@ syserr_t buf_peek(RingBuf_t *buf, char *data) {
  * @return SYS_OK, ERR_NOMEM if buffer is empty
  */
 syserr_t buf_read(RingBuf_t *buf, char *data) {
-    if (buf_readblock(buf, (uint8_t*)data, 1) == 0) {
+    if (buf_readblock(buf, (uint8_t *)data, 1) == 0) {
         // No data in buffer to return;
         return ERR_NOMEM;
     }
@@ -59,7 +59,7 @@ syserr_t buf_read(RingBuf_t *buf, char *data) {
  * @return SYS_OK, ERR_NOMEM if buffer is full
  */
 syserr_t buf_write(RingBuf_t *buf, char data) {
-    if (buf_writeblock(buf, (uint8_t*)&data, 1) == 0) {
+    if (buf_writeblock(buf, (uint8_t *)&data, 1) == 0) {
         // No space in buffer to write to
         return ERR_NOMEM;
     }
@@ -121,3 +121,10 @@ uint32_t buf_writeblock(RingBuf_t *buf, uint8_t *data, uint32_t wlen) {
  * @return number of bytes in buffer
  */
 uint32_t buf_getsize(RingBuf_t *buf) { return buf->size; }
+
+/**
+ * Get the number of bytes of remaining space available in the ring buffer
+ * @param buf: Ringbuffer configuration
+ * @return number of bytes still possible to write to buffer
+ */
+uint32_t buf_getspace(RingBuf_t *buf) { return buf->len - buf->size; }

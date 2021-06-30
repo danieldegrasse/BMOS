@@ -44,6 +44,7 @@ static uint8_t UART_WBUFFS[NUM_UARTS][UART_RINGBUF_SIZE];
 
 static void UART_interrupt(UART_periph_t source);
 static void UART_transmit(UART_periph_status_t *handle);
+static int UART_bufwrite(UART_periph_status_t *uart, uint8_t *buf, int len);
 /**
  * Opens a UART or LPUART device for read/write access
  * @param periph: Identifier of UART to open
@@ -339,6 +340,7 @@ int UART_write(UART_handle_t handle, uint8_t *buf, uint32_t len,
                syserr_t *err) {
     int num_written, timeout;
     bool tx_inactive;
+    UART_periph_status_t *uart = (UART_periph_status_t *)handle;
     if (len == 0) {
         return len;
     }
@@ -347,19 +349,20 @@ int UART_write(UART_handle_t handle, uint8_t *buf, uint32_t len,
      * ring buffer
      */
     mask_irq();
-    tx_inactive = !((UART_periph_status_t *)handle)->tx_active;
+    tx_inactive = !(uart->tx_active);
     // Now write data to the ring buffer
-    num_written = buf_writeblock(&(((UART_periph_status_t *)handle)->write_buf),
-                                 buf, len);
+    num_written = UART_bufwrite(uart, buf, len);
     unmask_irq();
+    // Advance the offset of buffer, and decrease len
+    buf += num_written;
+    len -= num_written;
     if (tx_inactive) {
         // We need to write data to the UART to start tranmission
         UART_transmit((UART_periph_status_t *)handle);
     }
     while (num_written < len && timeout != UART_TIMEOUT_NONE) {
         // Wait for there to be space in the ringbuffer
-        while (buf_getsize(&(((UART_periph_status_t *)handle)->write_buf)) ==
-                   UART_RINGBUF_SIZE &&
+        while (buf_getsize(&(uart->write_buf)) == UART_RINGBUF_SIZE &&
                timeout != UART_TIMEOUT_NONE) {
             // If the timeout is set to infinity, we should just spin here
             if (timeout != UART_TIMEOUT_INF) {
@@ -375,14 +378,12 @@ int UART_write(UART_handle_t handle, uint8_t *buf, uint32_t len,
         }
         // There is space to write data. Write it.
         mask_irq();
-        num_written +=
-            buf_writeblock(&(((UART_periph_status_t *)handle)->write_buf),
-                           buf + num_written, len - num_written);
+        num_written += UART_bufwrite(uart, buf, len);
         unmask_irq();
     }
     // Now wait for all data to be sent
     while (timeout != UART_TIMEOUT_NONE &&
-           buf_getsize(&(((UART_periph_status_t *)handle)->write_buf)) > 0) {
+           buf_getsize(&(uart->write_buf)) > 0) {
         mask_irq();
         unmask_irq();
     }
@@ -427,6 +428,10 @@ static void UART_interrupt(UART_periph_t source) {
     if (READBITS(handle->regs->ISR, USART_ISR_RXNE)) {
         // We have data in the RX buffer. Read it to clear the flag.
         data = READBITS(handle->regs->RDR, USART_RDR_RDR);
+        if (handle->cfg.UART_textmode == UART_txtmode_en && data == '\r') {
+            // Transparently replace the \r with a \n
+            data = '\n';
+        }
         // Store the data
         if (buf_write(&(handle->read_buf), data) != SYS_OK) {
             LOG_D("Dropping character from UART");
@@ -454,4 +459,47 @@ static void UART_interrupt(UART_periph_t source) {
             SETBITS(handle->regs->ICR, USART_ICR_TCCF);
         }
     }
+}
+
+/**
+ * Writes data to a UART's output buffer, until the buffer is full or the
+ * provided buffer is entirely written. returns the number of bytes written.
+ * @param uart: UART handle to write to the output buffer of
+ * @param buf: data to write to output buffer.
+ * @param len: length of data to write
+ */
+static int UART_bufwrite(UART_periph_status_t *uart, uint8_t *buf, int len) {
+    int rd_idx, num_written;
+    syserr_t ret;
+    num_written = 0;
+    if (uart->cfg.UART_textmode == UART_txtmode_en) {
+        /**
+         * As we write data into the buffer, replace '\n' with "\r\n"
+         * we have to iterate through each character to accomplish this
+         */
+        rd_idx = 0;
+        while (rd_idx < len) {
+            if (buf[rd_idx] == '\n') {
+                // Ensure buffer has space for two characters
+                if (buf_getspace(&(uart->write_buf)) < 2) {
+                    // We cannot write /r/n, break out of write loop
+                    break;
+                }
+                // The buffer has space. Write CR and LF.
+                buf_writeblock(&(uart->write_buf), (uint8_t*)"\r\n", 2);
+            } else {
+                ret = buf_write(&(uart->write_buf), *(buf + rd_idx));
+                if (ret != SYS_OK) {
+                    // Buffer is full, break out of write loop
+                    break;
+                }
+            }
+            // Increment number of bytes written and read index
+            num_written++;
+            rd_idx++;
+        }
+    } else {
+        num_written = buf_writeblock(&(uart->write_buf), buf, len);
+    }
+    return num_written;
 }

@@ -76,6 +76,16 @@ typedef enum {
 } UART_baud_rate_t;
 
 /**
+ * UART character replacement (text mode). If enabled, calls to UART_write will
+ * have a newline replaced with a carriage return plus newline, and calls to
+ * UART_read will have a carriage return replaced with a newline.
+ */
+typedef enum {
+    UART_textmode_dis, /*!< Do not replace LF with CRLF or vice versa */
+    UART_txtmode_en,   /*!< Text mode is enabled */
+} UART_txtmode_t;
+
+/**
  * UART peripheral list. See datasheet for pin connections.
  */
 typedef enum {
@@ -104,18 +114,17 @@ typedef struct UART_config {
     UART_flow_control_t UART_flowcontrol; /*!< UART flow control setting */
     UART_baud_rate_t UART_baud_rate;      /*!< UART baud rate */
     UART_timeout_t UART_timeout;          /*!< UART read/write timeout */
+    UART_txtmode_t UART_textmode;         /*!< UART replaces LF with CRLF */
 } UART_config_t;
 
-#define UART_DEFAULT_CONFIG {\
-    .UART_wordlen = UART_word_8n1, \
-    .UART_stopbit = UART_onestop, \
-    .UART_parity = UART_parity_disabled,\
-    .UART_pin_swap = UART_pin_normal, \
-    .UART_bit_order = UART_lsb_first, \
-    .UART_flowcontrol = UART_no_flow, \
-    .UART_baud_rate = UART_baud_115200, \
-    .UART_timeout = UART_TIMEOUT_INF\
-}
+#define UART_DEFAULT_CONFIG                                                    \
+    {                                                                          \
+        .UART_wordlen = UART_word_8n1, .UART_stopbit = UART_onestop,           \
+        .UART_parity = UART_parity_disabled, .UART_pin_swap = UART_pin_normal, \
+        .UART_bit_order = UART_lsb_first, .UART_flowcontrol = UART_no_flow,    \
+        .UART_baud_rate = UART_baud_115200, .UART_timeout = UART_TIMEOUT_INF,  \
+        .UART_textmode = UART_textmode_dis                                     \
+    }
 
 typedef void *UART_handle_t;
 

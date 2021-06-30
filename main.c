@@ -14,9 +14,10 @@ int main() {
     GPIO_config_t config = GPIO_DEFAULT_CONFIG;
     GPIO_config_t uart_gpio = GPIO_DEFAULT_CONFIG;
     clock_cfg_t clk_cfg = CLOCK_DEFAULT_CONFIG;
-    char data[] = "Echoing characters:\r\n";
-    char buf;
+    lpuart_confg.UART_textmode = UART_txtmode_en;
+    char data[] = "Echoing characters:\n";
     syserr_t err;
+    char buf;
     int len;
     // Set system clock to 80MHz
     clock_init(&clk_cfg);
@@ -35,7 +36,7 @@ int main() {
     // Configure PA2 and PA3 for AF8 (to use LPUART)
     uart_gpio.alternate_func = GPIO_af8;
     uart_gpio.mode = GPIO_mode_afunc;
-    uart_gpio.pullup_pulldown = GPIO_no_pull;
+    uart_gpio.pullup_pulldown = GPIO_pullup; // UART is idle high
     uart_gpio.output_speed = GPIO_speed_vhigh;
     // TX pin (pullup)
     GPIO_config(GPIO_PORT_A, GPIO_PIN_2, &uart_gpio);

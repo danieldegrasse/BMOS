@@ -77,4 +77,11 @@ uint32_t buf_writeblock(RingBuf_t *buf, uint8_t *data, uint32_t wlen);
  */
 uint32_t buf_getsize(RingBuf_t *buf);
 
+/**
+ * Get the number of bytes of remaining space available in the ring buffer
+ * @param buf: Ringbuffer configuration
+ * @return number of bytes still possible to write to buffer
+ */
+uint32_t buf_getspace(RingBuf_t *buf);
+
 #endif

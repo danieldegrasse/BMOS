@@ -65,14 +65,14 @@ typedef enum {
  */
 typedef enum {
     UART_baud_auto = 0,
-    UART_baud_1200 = 1,
-    UART_baud_2400 = 2,
-    UART_baud_4800 = 3,
-    UART_baud_9600 = 4,
-    UART_baud_19200 = 5,
-    UART_baud_38400 = 6,
-    UART_baud_57600 = 7,
-    UART_baud_115200 = 8,
+    UART_baud_1200 = 1200,
+    UART_baud_2400 = 2400,
+    UART_baud_4800 = 4800,
+    UART_baud_9600 = 9600,
+    UART_baud_19200 = 19200,
+    UART_baud_38400 = 38400,
+    UART_baud_57600 = 57600,
+    UART_baud_115200 = 115200,
 } UART_baud_rate_t;
 
 /**
@@ -113,7 +113,8 @@ typedef struct UART_config {
     UART_bitorder_t UART_bit_order;       /*!< UART bit MSB or LSB first */
     UART_flow_control_t UART_flowcontrol; /*!< UART flow control setting */
     UART_baud_rate_t UART_baud_rate;      /*!< UART baud rate */
-    UART_timeout_t UART_timeout;          /*!< UART read/write timeout */
+    UART_timeout_t UART_read_timeout;     /*!< UART read timeout */
+    UART_timeout_t UART_write_timeout;    /*!< UART write timeout */
     UART_txtmode_t UART_textmode;         /*!< UART replaces LF with CRLF */
 } UART_config_t;
 
@@ -122,7 +123,9 @@ typedef struct UART_config {
         .UART_wordlen = UART_word_8n1, .UART_stopbit = UART_onestop,           \
         .UART_parity = UART_parity_disabled, .UART_pin_swap = UART_pin_normal, \
         .UART_bit_order = UART_lsb_first, .UART_flowcontrol = UART_no_flow,    \
-        .UART_baud_rate = UART_baud_115200, .UART_timeout = UART_TIMEOUT_INF,  \
+        .UART_baud_rate = UART_baud_115200,                                    \
+        .UART_read_timeout = UART_TIMEOUT_INF,                                 \
+        .UART_write_timeout = UART_TIMEOUT_INF,                                \
         .UART_textmode = UART_textmode_dis                                     \
     }
 

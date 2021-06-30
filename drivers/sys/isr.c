@@ -100,3 +100,80 @@ void UART_isr(void) {
         break;
     }
 }
+
+/**
+ * System interrupt handler definitions. These should not be called, they
+ * are implemented for use in the NVIC table
+ */
+
+/**
+ * Non maskable interrupt handler
+ */
+void NMI_irq() {
+    while (1)
+        ;
+}
+
+/**
+ * Hard fault interrupt handler
+ */
+void HardFault_irq() {
+    while (1)
+        ;
+}
+
+/**
+ * Memory management fault interrupt handler
+ */
+void MMFault_irq() {
+    while (1)
+        ;
+}
+
+/**
+ * Bus fault interrupt handler
+ */
+void BusFault_irq() {
+    while (1)
+        ;
+}
+
+/**
+ * Usage fault interrupt handler
+ */
+void UsageFault_irq() {
+    while (1)
+        ;
+}
+
+/**
+ * SVCall interrupt handler
+ */
+void SVCall_irq() {
+    while (1)
+        ;
+}
+
+/**
+ * Debug monitor interrupt handler
+ */
+void DebugMonitor_irq() {
+    while (1)
+        ;
+}
+
+/**
+ * PendSV interrupt handler
+ */
+void PendSV_irq() {
+    while (1)
+        ;
+}
+
+/**
+ * Systick interrupt handler
+ */
+void Systick_irq() {
+    while (1)
+        ;
+}

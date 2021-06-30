@@ -1,7 +1,7 @@
 #include <stdint.h>
 
-#include <device/device.h>
 #include "gpio.h"
+#include <device/device.h>
 #include <util/util.h>
 
 /**
@@ -259,5 +259,9 @@ GPIO_level_t GPIO_read(GPIO_port_t port, GPIO_pin_t pin) {
     default:
         return 0;
     }
-    return READFIELD(periph->IDR, 1UL, pin);
+    if (READFIELD(periph->IDR, 1UL, pin)) {
+        return GPIO_HIGH;
+    } else {
+        return GPIO_LOW;
+    }
 }

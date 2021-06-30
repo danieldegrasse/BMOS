@@ -11,11 +11,6 @@
 void set_UART_isr(void(*handler)(UART_periph_t));
 
 /**
- * UART ISR handler. Handles IRQ numbers 37, 38, 39 and 70
- */
-void UART_isr(void);
-
-/**
  * Simple function to disable interrupts.
  * This sets PRIMASK to 1, effectively disabling preemption
  */
@@ -38,4 +33,60 @@ void disable_irq(uint32_t num);
  * @param num: Interrupt number to enable
  */
 void enable_irq(uint32_t num);
+
+
+/**
+ * System interrupt handler definitions. These should not be called, they
+ * are defined for use in the NVIC table
+ */
+
+/**
+ * Non maskable interrupt handler
+ */
+void NMI_irq();
+
+/**
+ * Hard fault interrupt handler
+ */
+void HardFault_irq();
+
+/**
+ * Memory management fault interrupt handler
+ */
+void MMFault_irq();
+
+/**
+ * Bus fault interrupt handler
+ */
+void BusFault_irq();
+
+/**
+ * Usage fault interrupt handler
+ */
+void UsageFault_irq();
+
+/**
+ * SVCall interrupt handler
+ */
+void SVCall_irq();
+
+/**
+ * Debug monitor interrupt handler
+ */
+void DebugMonitor_irq();
+
+/**
+ * PendSV interrupt handler
+ */
+void PendSV_irq();
+
+/**
+ * Systick interrupt handler
+ */
+void Systick_irq();
+
+/**
+ * UART ISR handler. Handles IRQ numbers 37, 38, 39 and 70
+ */
+void UART_isr(void);
 #endif

@@ -21,7 +21,6 @@ void init(void);
 extern void main(void); // Assume that the user will provide a main function
 
 static void DefaultISRHandler(void);
-static void NMI_irq(void);
 /*
  * Exception Vector Table. See page 321 of Datasheet for list.
  * Reset vector is required for code to run.
@@ -126,11 +125,6 @@ const uint32_t exception_vectors[] __attribute__((section(".vectors"))) = {
     (uint32_t)DefaultISRHandler, /*!< 81 FPU global interrupt */
     (uint32_t)DefaultISRHandler  /*!< 82 CRS global interrupt  */
 };
-
-static void NMI_irq(void) {
-    // Spin.
-    while(1);
-}
 
 /**
  * Default Handler for an ISR.

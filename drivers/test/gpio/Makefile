@@ -6,10 +6,10 @@ TOOLCHAIN_ROOT=/usr
 OPENOCD=openocd -f /usr/share/openocd/scripts/board/stm32l4discovery.cfg
 
 # Drivers directory
-DRIVERS=drivers
+DRIVERS=$(subst /test/gpio,, $(PWD))
 
 # Program name
-PROG=uart-echo
+PROG=gpio-test
 
 # Include drivers makefile
 include $(DRIVERS)/drivers.mk

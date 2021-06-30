@@ -158,4 +158,11 @@ int UART_read(UART_handle_t handle, uint8_t *buf, uint32_t len, syserr_t *err);
  */
 int UART_write(UART_handle_t handle, uint8_t *buf, uint32_t len, syserr_t *err);
 
+/**
+ * Closes a UART or LPUART device
+ * @param handle: Handle to open uart device
+ * @return SYS_OK on success, or error value otherwise
+ */
+syserr_t UART_close(UART_handle_t handle);
+
 #endif

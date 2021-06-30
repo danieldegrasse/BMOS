@@ -28,12 +28,13 @@ typedef enum {
  * Configuration structure for UART devices
  */
 typedef struct {
-    UART_config_t cfg;   /*!< User configuration for UART */
-    USART_TypeDef *regs; /*!< Register access for this UART */
-    UART_state_t state;  /*!< UART state (open or closed) */
-    bool tx_active;      /*!< Is UART transmission active */
-    RingBuf_t write_buf; /*!< UART write ring buffer (outgoing data)*/
-    RingBuf_t read_buf;  /*!< UART read ring buffer (incoming data)*/
+    UART_config_t cfg;       /*!< User configuration for UART */
+    USART_TypeDef *regs;     /*!< Register access for this UART */
+    UART_state_t state;      /*!< UART state (open or closed) */
+    bool tx_active;          /*!< Is UART transmission active */
+    RingBuf_t write_buf;     /*!< UART write ring buffer (outgoing data)*/
+    RingBuf_t read_buf;      /*!< UART read ring buffer (incoming data)*/
+    UART_periph_t periph_id; /*!< Identifies the peripheral handle references */
 } UART_periph_status_t;
 
 #define UART_RINGBUF_SIZE 80
@@ -45,6 +46,7 @@ static uint8_t UART_WBUFFS[NUM_UARTS][UART_RINGBUF_SIZE];
 static void UART_interrupt(UART_periph_t source);
 static void UART_transmit(UART_periph_status_t *handle);
 static int UART_bufwrite(UART_periph_status_t *uart, uint8_t *buf, int len);
+
 /**
  * Opens a UART or LPUART device for read/write access
  * @param periph: Identifier of UART to open
@@ -73,6 +75,7 @@ UART_handle_t UART_open(UART_periph_t periph, UART_config_t *config,
     // Set handle state to open
     handle->state = UART_dev_open;
     handle->tx_active = false;
+    handle->periph_id = periph;
     memcpy(&handle->cfg, config, sizeof(UART_config_t));
     // Setup read and write buffers
     buf_init(&handle->read_buf, UART_RBUFFS[periph], UART_RINGBUF_SIZE);
@@ -84,22 +87,26 @@ UART_handle_t UART_open(UART_periph_t periph, UART_config_t *config,
      */
     switch (periph) {
     case LPUART_1:
-        SETBITS(RCC->APB1ENR2, RCC_APB1ENR2_LPUART1EN);
+        SETBITS(RCC->APB1ENR2, RCC_APB1ENR2_LPUART1EN);    // Enable peripheral
+        SETBITS(RCC->APB1RSTR2, RCC_APB1RSTR2_LPUART1RST); // Reset peripheral
         enable_irq(LPUART1_IRQn);
         handle->regs = LPUART1;
         break;
     case USART_1:
-        SETBITS(RCC->APB2ENR, RCC_APB2ENR_USART1EN);
+        SETBITS(RCC->APB2ENR, RCC_APB2ENR_USART1EN);    // Enable peripheral
+        SETBITS(RCC->APB2RSTR, RCC_APB2RSTR_USART1RST); // Reset peripheral
         enable_irq(USART1_IRQn);
         handle->regs = USART1;
         break;
     case USART_2:
-        SETBITS(RCC->APB1ENR1, RCC_APB1ENR1_USART2EN);
+        SETBITS(RCC->APB1ENR1, RCC_APB1ENR1_USART2EN);    // Enable peripheral
+        SETBITS(RCC->APB1RSTR1, RCC_APB1RSTR1_USART2RST); // Reset peripheral
         enable_irq(USART2_IRQn);
         handle->regs = USART2;
         break;
     case USART_3:
-        SETBITS(RCC->APB1ENR1, RCC_APB1ENR1_USART3EN);
+        SETBITS(RCC->APB1ENR1, RCC_APB1ENR1_USART3EN);    // Enable peripheral
+        SETBITS(RCC->APB1RSTR1, RCC_APB1RSTR1_USART3RST); // Reset peripheral
         enable_irq(USART3_IRQn);
         handle->regs = USART3;
         break;
@@ -287,6 +294,11 @@ UART_handle_t UART_open(UART_periph_t periph, UART_config_t *config,
  */
 int UART_read(UART_handle_t handle, uint8_t *buf, uint32_t len, syserr_t *err) {
     int num_read, timeout;
+    // Verify inputs
+    if (handle == NULL || buf == NULL) {
+        *err = ERR_BADPARAM;
+        return -1;
+    }
     /**
      * First, we must disable interrupts. If we don't do so, then we may get
      * inconsistent data from the ring buffer
@@ -339,6 +351,11 @@ int UART_read(UART_handle_t handle, uint8_t *buf, uint32_t len, syserr_t *err) {
 int UART_write(UART_handle_t handle, uint8_t *buf, uint32_t len,
                syserr_t *err) {
     int num_written, timeout;
+    // Verify inputs
+    if (handle == NULL || buf == NULL) {
+        *err = ERR_BADPARAM;
+        return -1;
+    }
     bool tx_inactive;
     UART_periph_status_t *uart = (UART_periph_status_t *)handle;
     if (len == 0) {
@@ -486,7 +503,7 @@ static int UART_bufwrite(UART_periph_status_t *uart, uint8_t *buf, int len) {
                     break;
                 }
                 // The buffer has space. Write CR and LF.
-                buf_writeblock(&(uart->write_buf), (uint8_t*)"\r\n", 2);
+                buf_writeblock(&(uart->write_buf), (uint8_t *)"\r\n", 2);
             } else {
                 ret = buf_write(&(uart->write_buf), *(buf + rd_idx));
                 if (ret != SYS_OK) {
@@ -502,4 +519,40 @@ static int UART_bufwrite(UART_periph_status_t *uart, uint8_t *buf, int len) {
         num_written = buf_writeblock(&(uart->write_buf), buf, len);
     }
     return num_written;
+}
+
+/**
+ * Closes a UART or LPUART device
+ * @param handle: Handle to open uart device
+ * @return SYS_OK on success, or error value otherwise
+ */
+syserr_t UART_close(UART_handle_t handle) {
+    UART_periph_status_t *uart = (UART_periph_status_t *)handle;
+    if (uart->state != UART_dev_open) {
+        return ERR_BADPARAM;
+    }
+    switch (uart->periph_id) {
+    case LPUART_1:
+        SETBITS(RCC->APB1ENR2, RCC_APB1ENR2_LPUART1EN);    // Disable peripheral
+        disable_irq(LPUART1_IRQn);
+        handle->regs = LPUART1;
+        break;
+    case USART_1:
+        CLEARBITS(RCC->APB2ENR, RCC_APB2ENR_USART1EN);    // Disable peripheral
+        disable_irq(USART1_IRQn);
+        handle->regs = USART1;
+        break;
+    case USART_2:
+        CLEARBITS(RCC->APB1ENR1, RCC_APB1ENR1_USART2EN);    // Disable peripheral
+        disable_irq(USART2_IRQn);
+        handle->regs = USART2;
+        break;
+    case USART_3:
+        CLEARBITS(RCC->APB1ENR1, RCC_APB1ENR1_USART3EN);    // Disable peripheral
+        disable_irq(USART3_IRQn);
+        handle->regs = USART3;
+        break;
+    // Close UART device
+    uart->state = UART_dev_closed;
+    return SYS_OK;
 }

@@ -214,13 +214,13 @@ UART_handle_t UART_open(UART_periph_t periph, UART_config_t *config,
     if (periph == LPUART_1) {
         switch (handle->cfg.UART_baud_rate) {
         case UART_baud_38400:
-            handle->regs->BRR = 0x82355;
+            handle->regs->BRR = 256U * pclk1_freq() / 38400;
             break;
         case UART_baud_57600:
-            handle->regs->BRR = 0x56CE3;
+            handle->regs->BRR = 256U * pclk1_freq() / 57600;
             break;
         case UART_baud_115200:
-            handle->regs->BRR = 0x22B9;
+            handle->regs->BRR = 256U * pclk1_freq() / 115200;
             break;
         default:
             *err = ERR_BADPARAM;
@@ -339,8 +339,11 @@ int UART_write(UART_handle_t handle, uint8_t *buf, uint32_t len,
                syserr_t *err) {
     int num_written, timeout;
     bool tx_inactive;
+    if (len == 0) {
+        return len;
+    }
     /**
-     *  First, disable interrupts so we do not get back data into the output
+     * First, disable interrupts so we do not place bad data into the output
      * ring buffer
      */
     mask_irq();
@@ -393,15 +396,16 @@ int UART_write(UART_handle_t handle, uint8_t *buf, uint32_t len,
 static void UART_transmit(UART_periph_status_t *handle) {
     char data;
     if (buf_getsize(&(handle->write_buf)) != 0) {
-        if (handle->tx_active == false) {
-            handle->tx_active = true;
-            SETBITS(handle->regs->CR1, USART_CR1_TE);
-            SETBITS(handle->regs->CR1, USART_CR1_TXEIE);
-        }
         // Read a byte from the ring buffer and send it
         buf_read(&(handle->write_buf), &data);
         // Send by writing to the TDR register
         handle->regs->TDR = USART_TDR_TDR & data;
+        if (handle->tx_active == false) {
+            // Enable interrupts so that we can send next character
+            handle->tx_active = true;
+            SETBITS(handle->regs->CR1, USART_CR1_TE);
+            SETBITS(handle->regs->CR1, USART_CR1_TXEIE);
+        }
     }
 }
 

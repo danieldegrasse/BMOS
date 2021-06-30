@@ -493,6 +493,8 @@ static syserr_t update_flash_ws(uint64_t new_freq) {
             latency = FLASH_ACR_LATENCY_0WS;
         }
     }
+    volatile FLASH_TypeDef *flash = FLASH;
+    (void)flash;
     /* Set the new latency in the flash ACR register */
     MODIFY_REG(FLASH->ACR, FLASH_ACR_LATENCY_Msk, latency);
     // Verify that the new latency was set

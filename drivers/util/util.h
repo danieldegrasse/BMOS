@@ -12,6 +12,6 @@
 #define READFIELD(x, y, z) READBITS((x), (y << z))
 
 #define MODIFY_REG(REG, FIELDMASK, SETMASK)                                    \
-    SETBITS((REG), (REG & (~(FIELDMASK) | (SETMASK))))
+    (REG) = (((REG) & ~(FIELDMASK)) | (SETMASK))
 
 #endif

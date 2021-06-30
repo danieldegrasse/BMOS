@@ -35,6 +35,7 @@ typedef struct {
     RingBuf_t write_buf;     /*!< UART write ring buffer (outgoing data)*/
     RingBuf_t read_buf;      /*!< UART read ring buffer (incoming data)*/
     UART_periph_t periph_id; /*!< Identifies the peripheral handle references */
+    char echo_char;          /*!< Next echo character to send on TX line */
 } UART_status_t;
 
 #define UART_RINGBUF_SIZE 80
@@ -82,6 +83,7 @@ UART_handle_t UART_open(UART_periph_t periph, UART_config_t *config,
     // Set handle state to open
     handle->state = UART_dev_open;
     handle->tx_active = false;
+    handle->echo_char = '\0';
     memcpy(&handle->cfg, config, sizeof(UART_config_t));
     // Setup read and write buffers
     buf_init(&handle->read_buf, UART_RBUFFS[periph], UART_RINGBUF_SIZE);
@@ -371,10 +373,24 @@ static syserr_t UART_start_tx(UART_status_t *handle) {
  */
 static void UART_transmit(UART_status_t *handle) {
     char data;
-    // Read a byte from the ring buffer and send it
-    if (buf_read(&(handle->write_buf), &data) == SYS_OK) {
-        // Send by writing to the TDR register
+    if (handle->cfg.UART_echomode == UART_echo_en &&
+        handle->echo_char != '\0') {
+        // Echo character takes priority, write it.
+        data = handle->echo_char;
+        if (handle->echo_char == '\r') {
+            // Echo character must be followed by \n
+            handle->echo_char = '\n';
+        } else {
+            handle->echo_char = '\0'; // Clears the echo character
+        }
+        // Send by writing to TDR register
         handle->regs->TDR = USART_TDR_TDR & data;
+    } else {
+        // Read a byte from the ring buffer and send it
+        if (buf_read(&(handle->write_buf), &data) == SYS_OK) {
+            // Send by writing to the TDR register
+            handle->regs->TDR = USART_TDR_TDR & data;
+        }
     }
 }
 
@@ -396,6 +412,14 @@ static void UART_interrupt(UART_periph_t source) {
     if (READBITS(handle->regs->ISR, USART_ISR_RXNE)) {
         // We have data in the RX buffer. Read it to clear the flag.
         data = READBITS(handle->regs->RDR, USART_RDR_RDR);
+        if (handle->cfg.UART_echomode == UART_echo_en) {
+            // Set the echo character for the transmit interrupt.
+            handle->echo_char = data;
+            if (!handle->tx_active) {
+                // Force TX to enable
+                UART_start_tx(handle);
+            }
+        }
         if (handle->cfg.UART_textmode == UART_txtmode_en && data == '\r') {
             // Transparently replace the \r with a \n
             data = '\n';

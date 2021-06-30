@@ -65,7 +65,8 @@ int main() {
         "this message. The ending characters will be 'EEEE'. If you see a\n"
         "second instance of those characters in this message, the test has\n"
         "failed 'EEEE'\n",
-        "\nAll UART tests passed! The device will spin in a loop now.\n"};
+        "\nAll UART tests passed! The device will enter echo mode now.\n"
+        "It should echo all characters typed to the prompt.\n"};
     syserr_t err;
     uint8_t buf[READBUF_LEN];
     int len, count;
@@ -176,6 +177,19 @@ int main() {
     }
     // delay for a few ms, so the UART tx can end
     delay_ms(100);
+    // Close the UART and reopen it with echo enabled.
+    if (UART_close(lpuart) != SYS_OK) {
+        while (1)
+            ; // Spin
+    }
+    lpuart_config.UART_read_timeout = UART_TIMEOUT_INF;
+    lpuart_config.UART_write_timeout = UART_TIMEOUT_INF;
+    lpuart_config.UART_echomode = UART_echo_en;
+    lpuart = UART_open(LPUART_1, &lpuart_config, &err);
+    if (lpuart == NULL || err != SYS_OK) {
+        while (1)
+            ; // spin
+    }
     // Print success message
     len = UART_write(lpuart, (uint8_t *)promptstrings[7],
                      strlen(promptstrings[7]), &err);

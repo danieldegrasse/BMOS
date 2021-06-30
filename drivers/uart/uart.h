@@ -86,6 +86,16 @@ typedef enum {
 } UART_txtmode_t;
 
 /**
+ * UART echo setting. If enabled, UART device will automatically echo all
+ * characters written to the UART back on the TX line. If UART_textmode
+ * is enabled, carriage return replacement will also occur.
+ */
+typedef enum {
+    UART_echo_dis, /*!< Do not enable UART echo */
+    UART_echo_en,  /*!< UART echo enabled */
+} UART_echomode_t;
+
+/**
  * UART peripheral list. See datasheet for pin connections.
  */
 typedef enum {
@@ -116,6 +126,7 @@ typedef struct UART_config {
     UART_timeout_t UART_read_timeout;     /*!< UART read timeout */
     UART_timeout_t UART_write_timeout;    /*!< UART write timeout */
     UART_txtmode_t UART_textmode;         /*!< UART replaces LF with CRLF */
+    UART_echomode_t UART_echomode; /*!< UART echo mode (echo data on tx line) */
 } UART_config_t;
 
 #define UART_DEFAULT_CONFIG                                                    \
@@ -126,7 +137,7 @@ typedef struct UART_config {
         .UART_baud_rate = UART_baud_115200,                                    \
         .UART_read_timeout = UART_TIMEOUT_INF,                                 \
         .UART_write_timeout = UART_TIMEOUT_INF,                                \
-        .UART_textmode = UART_textmode_dis                                     \
+        .UART_textmode = UART_textmode_dis, .UART_echomode = UART_echo_dis     \
     }
 
 typedef void *UART_handle_t;

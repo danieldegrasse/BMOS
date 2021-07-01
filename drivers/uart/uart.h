@@ -81,7 +81,7 @@ typedef enum {
  * UART_read will have a carriage return replaced with a newline.
  */
 typedef enum {
-    UART_textmode_dis, /*!< Do not replace LF with CRLF or vice versa */
+    UART_txtmode_dis, /*!< Do not replace LF with CRLF or vice versa */
     UART_txtmode_en,   /*!< Text mode is enabled */
 } UART_txtmode_t;
 
@@ -137,7 +137,7 @@ typedef struct UART_config {
         .UART_baud_rate = UART_baud_115200,                                    \
         .UART_read_timeout = UART_TIMEOUT_INF,                                 \
         .UART_write_timeout = UART_TIMEOUT_INF,                                \
-        .UART_textmode = UART_textmode_dis, .UART_echomode = UART_echo_dis     \
+        .UART_textmode = UART_txtmode_dis, .UART_echomode = UART_echo_dis     \
     }
 
 typedef void *UART_handle_t;

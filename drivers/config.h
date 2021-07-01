@@ -24,7 +24,7 @@
 /** Minimal abort implementation. Spins in a while loop */
 #define SYSABORT_MIN 0
 /** Full abort implementation. Logs abort reason to debug output */
-#define SYSABORT_MIN 1
+#define SYSABORT_FULL 1
 
 /** System heap constants */
 /** Empty heap. Disables memory allocation */
@@ -81,7 +81,7 @@
  * Any log call with a level below the set level will not be printed.
  */
 #ifndef SYSLOGLEVEL
-#define SYSLOGLEVEL SYSLOGLEVEL_INFO
+#define SYSLOGLEVEL SYSLOGLEVEL_DEBUG
 #endif
 
 /**

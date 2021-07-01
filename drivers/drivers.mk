@@ -16,16 +16,16 @@ OBJCOPY=$(TOOLCHAIN_ROOT)/bin/arm-none-eabi-objcopy
 
 
 # Note that mthumb is required. Cortex M executes in T32 mode.
-CFLAGS += -mcpu=cortex-m4 \
+local_CFLAGS += -mcpu=cortex-m4 \
 	-mthumb \
 	-Wall \
 	-Werror \
 	-ffreestanding \
 	-g \
 	-isystem $(DRIVERS) \
-	-nostartfiles
-LDFLAGS += -Wl,-T $(DRIVERS)/linker_script.ld \
-	-Wl,-Map=$(BUILDDIR)/$(PROG).map
+	-nostartfiles $(CFLAGS)
+local_LDFLAGS += -Wl,-T $(DRIVERS)/linker_script.ld \
+	-Wl,-Map=$(BUILDDIR)/$(PROG).map $(LDFLAGS)
 
 # Build output directory
 BUILDDIR=build
@@ -56,11 +56,15 @@ _OBJ=$(patsubst %,$(OBJDIR)/%,$(OBJ))
 
 all: $(BUILDDIR)/$(PROG).bin
 
+# Disable system logging and optimize code for release build
+release: CFLAGS+=-O2 -DSYSLOG=3
+release: $(BUILDDIR)/$(PROG).bin
+
 # Output compiled object files into BUILDDIR
 $(OBJDIR)/%.o: %.c
 	@ [ -d $(dir $@) ] || mkdir -p $(dir $@)
 	@ echo "[CC] $<"
-	@ $(CC) $(CFLAGS) -c -o $@ $< 
+	@ $(CC) $(local_CFLAGS) -c -o $@ $< 
 
 $(BUILDDIR)/$(PROG).bin: $(BUILDDIR)/$(PROG).elf
 	@ echo "Creating $@"
@@ -68,7 +72,7 @@ $(BUILDDIR)/$(PROG).bin: $(BUILDDIR)/$(PROG).elf
 
 $(BUILDDIR)/$(PROG).elf: $(_OBJ)
 	@ echo "Linking $@"
-	@ $(CC) -o $@ $^ $(CFLAGS) $(LDFLAGS)
+	@ $(CC) -o $@ $^ $(local_CFLAGS) $(local_LDFLAGS)
 
 ##### Flash code to board using OpenOCD (0x08000000 is start of flash bank)
 flash: $(BUILDDIR)/$(PROG).bin

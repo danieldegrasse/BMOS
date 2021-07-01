@@ -4,7 +4,7 @@
  *
  * Defaults can be changed here,
  * or overriden at compile time by passing
- * "-Dparameter_here=value_here" to the compiler
+ * "CFLAGS=-Dparameter_here=value_here" to the make command
  */
 
 #ifndef CONFIG_H
@@ -35,8 +35,11 @@
 /** System log types */
 /** printf and logging directed to LPUART1, running at 115200 baud and 8n1. */
 #define SYSLOG_LPUART1 0
+/** printf and logging directed to semihosting system. This requires a debugger
+ * with semihosting enabled */
+#define SYSLOG_SEMIHOST 1
 /** system logging is disabled */
-#define SYSLOG_DISABLED 1
+#define SYSLOG_DISABLED 2
 
 /**
  * System log levels
@@ -73,7 +76,7 @@
  * Set by passing -DSYSLOG=val
  */
 #ifndef SYSLOG
-#define SYSLOG SYSLOG_LPUART1
+#define SYSLOG SYSLOG_SEMIHOST
 #endif
 
 /**

@@ -164,6 +164,8 @@ syserr_t clock_init(clock_cfg_t *cfg) {
         new_sysclock_freq = hsi16_freq;
         SW = RCC_CFGR_SW_HSI;
         break;
+    default:
+        return ERR_BADPARAM;
     }
     if (new_sysclock_freq > 80000000UL || new_sysclock_freq == 0) {
         return ERR_BADPARAM;
@@ -337,7 +339,8 @@ void delay_ms(uint32_t delay) {
         "cmp %0, #0\n"
         "bne loop\n"
         :
-        : "r" (target));
+        : "r" (target)
+        : "r1");
     target += 1;
 }
 

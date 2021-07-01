@@ -12,6 +12,7 @@
 extern int errno;
 
 #include <stdlib.h>
+#include <stdio.h>
 #include <sys/stat.h>
 #include <sys/times.h>
 
@@ -38,7 +39,7 @@ void _exit(int status) {
         while (1)
             ;
     } else {
-        // Todo: log to output
+        printf("System exited with code %i\n", status);
     }
 }
 /**
@@ -70,11 +71,28 @@ void *_sbrk(int incr) {
  */
 int _write(int file, char *buf, int len) {
     syserr_t err;
+    int remaining = len;
     int ret;
     if (SYSLOG == SYSLOG_LPUART1) {
         ret = UART_write(uart_logger, (unsigned char *)buf, len, &err);
         if (ret == -1) {
             errno = err;
+        }
+        return len;
+    } else if (SYSLOG == SYSLOG_SEMIHOST) {
+        while (remaining--) {
+            /**
+             * Ensure buf is in r1, then call bkpt instruction with semihosting
+             * immediate. Set r0 to 0x03 to indicate a WRITEC operation
+             */
+            asm("mov r0, #0x03\n"
+                "mov r1, %0\n"
+                "bkpt 0xAB\n" 
+                : 
+                : "r"(buf)
+                : "r0", "r1");
+            // Advance the buffer
+            buf++;
         }
         return len;
     } else {
@@ -148,7 +166,6 @@ void _fini(void) {
     lpuart_deinit();
 #endif
 }
-
 
 /* All handlers defined below are "stubs" simply provided to link correctly */
 

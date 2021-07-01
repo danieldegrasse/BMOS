@@ -302,6 +302,9 @@ syserr_t UART_close(UART_handle_t handle) {
     if (uart->state != UART_dev_open) {
         return ERR_BADPARAM;
     }
+    while (uart->tx_active) {
+        // Wait for uart device to stop transmitting
+    }
     switch (uart->periph_id) {
     case LPUART_1:
         // Reset peripheral by toggling reset bit

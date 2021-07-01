@@ -10,20 +10,6 @@
 
 #include "logging.h"
 
-/**
- * ASCII color codes
- */
-#define BLK "\e[30m"
-#define RED "\e[31m"
-#define GRN "\e[32m"
-#define YEL "\e[33m"
-#define BLU "\e[34m"
-#define MAG "\e[35m"
-#define CYN "\e[36m"
-#define WHT "\e[37m"
-// Reset Color
-#define RST "\e[m"
-
 
 static void syslog(int log_level, char *format, va_list ap);
 
@@ -83,25 +69,25 @@ static void syslog(int log_level, char *format, va_list ap) {
     if (log_level >= SYSLOGLEVEL) {
         // Log message level
         switch (log_level) {
-        case SYSLOGLEVEL_DEBUG: // prints with magenta color
-            printf(MAG"DEBUG: ");
+        case SYSLOGLEVEL_DEBUG:
+            printf("DEBUG: ");
             break;
-        case SYSLOGLEVEL_INFO: // prints with cyan color
-            printf(CYN"INFO: ");
+        case SYSLOGLEVEL_INFO: 
+            printf("INFO: ");
             break;
-        case SYSLOGLEVEL_WARNING: // prints with yellow color
-            printf(YEL"WARNING: ");
+        case SYSLOGLEVEL_WARNING: 
+            printf("WARNING: ");
             break;
-        case SYSLOGLEVEL_ERROR: // prints with red color
-            printf(RED"ERROR: ");
+        case SYSLOGLEVEL_ERROR: 
+            printf("ERROR: ");
             break;
-        default: // prints with white color
-            printf(WHT"LOG: ");
+        default: 
+            printf("LOG: ");
             break;
         }
         // Log message
         vprintf(format, ap);
-        // Print newline and color reset
-        printf(RST"\n");
+        // Print newline 
+        printf("\n");
     }
 }

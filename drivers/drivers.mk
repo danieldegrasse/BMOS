@@ -21,11 +21,12 @@ local_CFLAGS += -mcpu=cortex-m4 \
 	-Wall \
 	-Werror \
 	-ffreestanding \
-	-g \
 	-isystem $(DRIVERS) \
-	-nostartfiles $(CFLAGS)
+	-nostartfiles\
+	$(CFLAGS)
 local_LDFLAGS += -Wl,-T $(DRIVERS)/linker_script.ld \
-	-Wl,-Map=$(BUILDDIR)/$(PROG).map $(LDFLAGS)
+	-Wl,-Map=$(BUILDDIR)/$(PROG).map \
+	$(LDFLAGS)
 
 # Build output directory
 BUILDDIR=build
@@ -54,10 +55,12 @@ OBJ=$(SRCS:%.c=%.o)
 OBJDIR=$(BUILDDIR)/obj
 _OBJ=$(patsubst %,$(OBJDIR)/%,$(OBJ))
 
-all: $(BUILDDIR)/$(PROG).bin
+# Enable debugging symbols on debug build
+debug: local_CFLAGS+=-g
+debug: $(BUILDDIR)/$(PROG).bin
 
 # Disable system logging and optimize code for release build
-release: CFLAGS+=-O2 -DSYSLOG=3
+release: local_CFLAGS+=-O1 -DSYSLOG=3
 release: $(BUILDDIR)/$(PROG).bin
 
 # Output compiled object files into BUILDDIR

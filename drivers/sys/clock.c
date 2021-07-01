@@ -10,6 +10,8 @@
 
 #include "clock.h"
 
+#define REG_VERIFY_TIMEOUT 10 // How many times to check register before timeout
+
 // Static variables to record current clock frequencies and states
 static sysclock_src_t system_clk_src = CLK_MSI; // Default clock is MSI
 static uint64_t sysclk_freq = MSI_freq_4MHz;    // Default frequency is 4 MHz
@@ -28,6 +30,7 @@ static uint64_t apb2_freq = MSI_freq_4MHz; // src is sysclock divided by 1
 static syserr_t update_flash_ws(uint64_t new_freq);
 static syserr_t msiclk_init(clock_cfg_t *cfg);
 static syserr_t pllclk_init(clock_cfg_t *cfg);
+static inline syserr_t verify_reg(uint32_t reg, uint32_t msk, uint32_t expect);
 
 /**
  * Initializes device clocks. This function should be called at boot
@@ -170,8 +173,6 @@ syserr_t clock_init(clock_cfg_t *cfg) {
     if (new_sysclock_freq > 80000000UL || new_sysclock_freq == 0) {
         return ERR_BADPARAM;
     }
-    RCC_TypeDef *rcc = RCC;
-    (void)rcc;
     // We are changing system clock frequency, so we must change flash ws
     if (new_sysclock_freq > sysclk_freq) {
         // Update flash ws first
@@ -182,14 +183,14 @@ syserr_t clock_init(clock_cfg_t *cfg) {
         // Now set system clock
         MODIFY_REG(RCC->CFGR, RCC_CFGR_SW, SW);
         // Make sure change propagated
-        if (READBITS(RCC->CFGR, RCC_CFGR_SWS) != SW << 2) {
+        if (verify_reg(RCC->CFGR, RCC_CFGR_SWS, SW << 2) != SYS_OK) {
             return ERR_DEVICE;
         }
     } else {
         // Now set system clock
         MODIFY_REG(RCC->CFGR, RCC_CFGR_SW, SW);
         // Make sure change propagated
-        if (READBITS(RCC->CFGR, RCC_CFGR_SWS) != SW << 2) {
+        if (verify_reg(RCC->CFGR, RCC_CFGR_SWS, SW << 2) != SYS_OK) {
             return ERR_DEVICE;
         }
         // Update flash ws last
@@ -330,17 +331,17 @@ void delay_ms(uint32_t delay) {
      */
     uint32_t target = (sysclk_freq / 8196000UL) * delay;
     // use assembly here to ensure known number of instructions
-    asm volatile ("loop:\n"
-        "sub %0, #1\n" // Will update condition flags
-        "mov r1, #4095\n" 
-        "innerloop:\n" 
-        "subs r1 , #1\n" // Runs 4096 times
-        "bne innerloop\n" // Runs 4096 times
-        "cmp %0, #0\n"
-        "bne loop\n"
-        :
-        : "r" (target)
-        : "r1");
+    asm volatile("loop:\n"
+                 "sub %0, #1\n" // Will update condition flags
+                 "mov r1, #4095\n"
+                 "innerloop:\n"
+                 "subs r1 , #1\n"  // Runs 4096 times
+                 "bne innerloop\n" // Runs 4096 times
+                 "cmp %0, #0\n"
+                 "bne loop\n"
+                 :
+                 : "r"(target)
+                 : "r1");
     target += 1;
 }
 
@@ -543,9 +544,26 @@ static syserr_t update_flash_ws(uint64_t new_freq) {
     /* Set the new latency in the flash ACR register */
     MODIFY_REG(FLASH->ACR, FLASH_ACR_LATENCY_Msk, latency);
     // Verify that the new latency was set
-    if (READBITS(FLASH->ACR, FLASH_ACR_LATENCY_Msk) != latency) {
+    if (verify_reg(FLASH->ACR, FLASH_ACR_LATENCY_Msk, latency) != SYS_OK) {
         return ERR_DEVICE;
     } else {
         return SYS_OK;
     }
+}
+
+/**
+ * Verifies a register's contents, with a timeout
+ * @param reg: Register value to check
+ * @param msk: Mask to apply to register
+ * @param expect: expected value for register
+ */
+static inline syserr_t verify_reg(uint32_t reg, uint32_t msk, uint32_t expect) {
+    int timeout = REG_VERIFY_TIMEOUT;
+    while (timeout--) {
+        if (READBITS(reg, msk) == expect) {
+            return SYS_OK;
+        }
+    }
+    // Timeout expired
+    return ERR_DEVICE;
 }

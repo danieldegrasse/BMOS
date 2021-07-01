@@ -71,7 +71,11 @@ int main() {
     uint8_t buf[READBUF_LEN];
     int len, count;
     // Set system clock to 80MHz
-    clock_init(&clk_cfg);
+    err = clock_init(&clk_cfg);
+    if (err != SYS_OK) {
+        while (1)
+            ; // Spin
+    };
     if (init_uart_gpio() != SYS_OK) {
         while (1)
             ; // Spin

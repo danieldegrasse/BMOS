@@ -52,7 +52,7 @@ int main() {
         for (i = 0; i < delay; i++);
         if (GPIO_read(GPIO_PORT_C, GPIO_PIN_13) == GPIO_HIGH) {
             // User button B1 is pressed. Change delay.
-            delay = 10000;
+            delay = 50000;
         } else {
             // Reset delay
             delay = 500000;

@@ -31,7 +31,7 @@ typedef struct {
     UART_config_t cfg;       /*!< User configuration for UART */
     USART_TypeDef *regs;     /*!< Register access for this UART */
     UART_state_t state;      /*!< UART state (open or closed) */
-    bool tx_active;          /*!< Is UART transmission active */
+    volatile bool tx_active;          /*!< Is UART transmission active */
     RingBuf_t write_buf;     /*!< UART write ring buffer (outgoing data)*/
     RingBuf_t read_buf;      /*!< UART read ring buffer (incoming data)*/
     UART_periph_t periph_id; /*!< Identifies the peripheral handle references */
@@ -278,7 +278,7 @@ int UART_write(UART_handle_t handle, uint8_t *buf, uint32_t len,
      * Now wait for all data to be sent. TC interrupt will clear tx_active flag
      * when transmission is done.
      */
-    while (timeout != UART_TIMEOUT_NONE && uart->tx_active) {
+    while (uart->tx_active && timeout != UART_TIMEOUT_NONE) {
         if (timeout != UART_TIMEOUT_INF) {
             delay_ms(200);
             if (timeout - 200 < UART_TIMEOUT_NONE) {

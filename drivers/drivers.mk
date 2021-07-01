@@ -60,7 +60,7 @@ debug: local_CFLAGS+=-g
 debug: $(BUILDDIR)/$(PROG).bin
 
 # Disable system logging and optimize code for release build
-release: local_CFLAGS+=-O1 -DSYSLOG=3
+release: local_CFLAGS+=-O2 -DSYSLOG=3
 release: $(BUILDDIR)/$(PROG).bin
 
 # Output compiled object files into BUILDDIR

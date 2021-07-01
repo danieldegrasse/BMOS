@@ -37,7 +37,7 @@ syserr_t gpio_init() {
 }
 
 int main() {
-    int i, delay = 500000;
+    volatile int i, delay = 500000;
     if (gpio_init() != SYS_OK) {
         // Spin
         while (1);

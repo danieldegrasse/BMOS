@@ -37,12 +37,12 @@
 void blink_led_delay() {
     // Turn on user LED
     GPIO_write(GPIO_PORT_B, GPIO_PIN_13, GPIO_HIGH);
-    for (int i = 0; i < DELAY; i++) {
+    for (volatile int i = 0; i < DELAY; i++) {
         // Delay
     }
     // Turn off user LED
     GPIO_write(GPIO_PORT_B, GPIO_PIN_13, GPIO_LOW);
-    for (int i = 0; i < DELAY; i++) {
+    for (volatile int i = 0; i < DELAY; i++) {
         // Delay
     }
 }

@@ -7,6 +7,9 @@
  * "-Dparameter_here=value_here" to the compiler
  */
 
+#ifndef CONFIG_H
+#define CONFIG_H
+
 /**
  * Configuration constants
  */
@@ -29,12 +32,19 @@
 /** Default heap size. Can be changed */
 #define SYSHEAPSIZE_DEFAULT 2048
 
-
 /** System log types */
 /** printf and logging directed to LPUART1, running at 115200 baud and 8n1. */
 #define SYSLOG_LPUART1 0
 /** system logging is disabled */
 #define SYSLOG_DISABLED 1
+
+/**
+ * System log levels
+ */
+#define SYSLOGLEVEL_DEBUG 0
+#define SYSLOGLEVEL_INFO 1
+#define SYSLOGLEVEL_WARNING 2
+#define SYSLOGLEVEL_ERROR 3
 
 /**
  * System exit type. Set by passing -DSYSEXIT=val
@@ -58,7 +68,29 @@
 #define SYSHEAPSIZE SYSHEAPSIZE_DEFAULT
 #endif
 
-
+/**
+ * System log subsystem. Can use a uart device, or disable system logging.
+ * Set by passing -DSYSLOG=val
+ */
 #ifndef SYSLOG
 #define SYSLOG SYSLOG_LPUART1
+#endif
+
+/**
+ * System logging level. Set by passing -DSYSLOGLEVEL=val
+ * Any log call with a level below the set level will not be printed.
+ */
+#ifndef SYSLOGLEVEL
+#define SYSLOGLEVEL SYSLOGLEVEL_INFO
+#endif
+
+/**
+ * System log buffer size. Any log string longer than this in bytes will not
+ * be rendered properly
+ * set with -DSYSLOGBUFSIZE=val
+ */
+#ifndef SYSLOGBUFSIZE
+#define SYSLOGBUFSIZE 256
+#endif
+
 #endif

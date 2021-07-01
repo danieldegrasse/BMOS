@@ -1,36 +1,74 @@
 
+/**
+ * @file logging.c
+ * Implements system logging facilities
+ */
+#include <stdarg.h>
+#include <stdio.h>
+
+#include <config.h>
+
 #include "logging.h"
 
-/**
- * System logging levels
- */
-typedef enum {
-    LOGLEVEL_DEBUG,
-    LOGLEVEL_INFO,
-    LOGLEVEL_WARN,
-    LOGLEVEL_ERR,
-} loglevel_t;
+static void syslog(int log_level, char *format, va_list ap);
 
 /**
  * System debugging log. Uses same format as printf
  * @param format: printf style formatting string
  */
-void LOG_D(char *format, ...) {}
+void LOG_D(char *format, ...) {
+    va_list valist;
+    // Start valist with format as last argument
+    va_start(valist, format);
+    syslog(SYSLOGLEVEL_DEBUG, format, valist);
+    // Free valist
+    va_end(valist);
+}
 
 /**
  * System info log. Uses same format as printf
  * @param format: printf style formatting string
  */
-void LOG_I(char *format, ...) {}
+void LOG_I(char *format, ...) {
+    va_list valist;
+    // Start valist with format as last argument
+    va_start(valist, format);
+    syslog(SYSLOGLEVEL_INFO, format, valist);
+    // Free valist
+    va_end(valist);
+}
 
 /**
  * System warning log. Uses same format as printf
  * @param format: printf style formatting string
  */
-void LOG_W(char *format, ...) {}
+void LOG_W(char *format, ...) {
+    va_list valist;
+    // Start valist with format as last argument
+    va_start(valist, format);
+    syslog(SYSLOGLEVEL_WARNING, format, valist);
+    // Free valist
+    va_end(valist);
+}
 
 /**
  * System error log. Uses same format as printf
  * @param format: printf style formatting string
  */
-void LOG_E(char *format, ...) {}
+void LOG_E(char *format, ...) {
+    va_list valist;
+    // Start valist with format as last argument
+    va_start(valist, format);
+    syslog(SYSLOGLEVEL_WARNING, format, valist);
+    // Free valist
+    va_end(valist);
+}
+
+static void syslog(int log_level, char *format, va_list ap) {
+    if (log_level >= SYSLOGLEVEL) {
+        // Log message
+        vprintf(format, ap);
+        // Print newline
+        printf("\n");
+    }
+}

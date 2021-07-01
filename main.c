@@ -6,6 +6,7 @@
 #include <gpio/gpio.h>
 #include <sys/clock.h>
 #include <uart/uart.h>
+#include <util/logging.h>
 
 
 /**
@@ -21,5 +22,7 @@ void system_init() {
  */
 int main() {
     printf("Hello world\n"); 
+    LOG_D("Not I");
+    LOG_E("I'll print"); 
     return SYS_OK;
 }

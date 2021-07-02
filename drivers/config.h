@@ -38,8 +38,11 @@
 /** printf and logging directed to semihosting system. This requires a debugger
  * with semihosting enabled */
 #define SYSLOG_SEMIHOST 1
+/** System logging is done via SWO pin. This requires a debugger that supports
+ * SWO */
+#define SYSLOG_SWO 2
 /** system logging is disabled */
-#define SYSLOG_DISABLED 2
+#define SYSLOG_DISABLED 3
 
 /**
  * System log levels
@@ -88,12 +91,17 @@
 #endif
 
 /**
- * System log buffer size. Any log string longer than this in bytes will not
- * be rendered properly
- * set with -DSYSLOGBUFSIZE=val
+ * System log buffer size. The system will log to the buffer, and periodically
+ * flush it to the output. If output flushing is desired, call
+ * fsync(STDOUT_FILENO).
+ * Set by passing -DSYSLOGBUFSIZE=val
  */
 #ifndef SYSLOGBUFSIZE
-#define SYSLOGBUFSIZE 256
+#if SYSLOG == SYSLOG_LPUART1
+#define SYSLOGBUFSIZE 0
+#else
+#define SYSLOGBUFSIZE 512
+#endif
 #endif
 
 #endif

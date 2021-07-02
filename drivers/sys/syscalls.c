@@ -11,13 +11,15 @@
 #undef errno
 extern int errno;
 
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <sys/stat.h>
 #include <sys/times.h>
+#include <unistd.h>
 
 #include <config.h>
 #include <gpio/gpio.h>
+#include <semihost/semihost.h>
 #include <sys/err.h>
 #include <uart/uart.h>
 
@@ -28,13 +30,17 @@ char *__env[1] = {0};
 char **environ = __env;
 
 static char *current_sbrk = &_ebss;
+#if SYSLOG == SYSLOG_LPUART1
 static UART_handle_t uart_logger = NULL;
+#endif
 
 /**
  * Exits the system.
  * @param status: Exit code
  */
 void _exit(int status) {
+    // Flush STDOUT log
+    fsync(STDOUT_FILENO);
     if (SYSEXIT == SYSEXIT_MIN) {
         while (1)
             ;
@@ -69,36 +75,43 @@ void *_sbrk(int incr) {
  * @param count: number of bytes to write from buf
  * @return -1 on error, or number of bytes written on success
  */
-int _write(int file, char *buf, int len) {
-    syserr_t err;
-    int remaining = len;
+int _write(int fd, char *buf, int len) {
+// Write data into the output buffer
+#if SYSLOG == SYSLOG_LPUART1
+    // Write to the UART device immediately, without buffering
     int ret;
-    if (SYSLOG == SYSLOG_LPUART1) {
-        ret = UART_write(uart_logger, (unsigned char *)buf, len, &err);
-        if (ret == -1) {
-            errno = err;
-        }
-        return len;
-    } else if (SYSLOG == SYSLOG_SEMIHOST) {
-        while (remaining--) {
-            /**
-             * Ensure buf is in r1, then call bkpt instruction with semihosting
-             * immediate. Set r0 to 0x03 to indicate a WRITEC operation
-             */
-            asm("mov r0, #0x03\n"
-                "mov r1, %0\n"
-                "bkpt 0xAB\n" 
-                : 
-                : "r"(buf)
-                : "r0", "r1");
-            // Advance the buffer
-            buf++;
-        }
-        return len;
-    } else {
-        // No defined way to write to system device
+    syserr_t err;
+    ret = UART_write(uart_logger, buf, len, &err);
+    if (ret == -1) {
+        errno = err;
+    }
+    return ret;
+#elif SYSLOG == SYSLOG_SEMIHOST
+    // Buffer writes to increase speed
+    semihost_writebuf(buf, len);
+    return len;
+#else
+    return -1;
+#endif
+}
+
+/**
+ * Forces flush to system. In this implementation, only flushing STDOUT
+ * is supported.
+ * @param fd: File descriptor
+ * @return -1 on error, 0 on success
+ */
+int fsync(int fd) {
+#if SYSLOG == SYSLOG_SEMIHOST
+    if (fd != STDOUT_FILENO) {
         return -1;
     }
+    // Flush semihost
+    semihost_flush();
+#else
+    // No need to flush
+#endif
+    return 0;
 }
 
 /* Libc initialization handlers */
@@ -144,6 +157,18 @@ static void lpuart_init(void) {
  */
 static void lpuart_deinit(void) { UART_close(uart_logger); }
 
+#elif SYSLOG == SYSLOG_SWO
+
+/**
+ * Initializes SWO output registers
+ */
+static void swo_init(void) {}
+
+/**
+ * Resets SWO output registers at exit
+ */
+static void swo_deinit(void) {}
+
 #endif
 
 /**
@@ -152,8 +177,11 @@ static void lpuart_deinit(void) { UART_close(uart_logger); }
  */
 void _init(void) {
 #if SYSLOG == SYSLOG_LPUART1
-    // Call LPUART1 constuctor
+    // Call LPUART1 constructor
     lpuart_init();
+#elif SYSLOG == SYSLOG_SWO
+    // Call swo initializer
+    swo_init();
 #endif
 }
 
@@ -164,6 +192,9 @@ void _fini(void) {
 #if SYSLOG == SYSLOG_LPUART1
     // Call LPUART1 destructor
     lpuart_deinit();
+#elif SYSLOG == SYSLOG_SWO
+    // Reset SWO settings
+    swo_deinit();
 #endif
 }
 

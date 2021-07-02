@@ -332,17 +332,16 @@ void delay_ms(uint32_t delay) {
     uint32_t target = (sysclk_freq / 8196000UL) * delay;
     // use assembly here to ensure known number of instructions
     asm volatile("loop:\n"
-                 "sub %0, #1\n" // Will update condition flags
+                 "sub %0, #1\n"
                  "mov r1, #4095\n"
                  "innerloop:\n"
                  "subs r1 , #1\n"  // Runs 4096 times
                  "bne innerloop\n" // Runs 4096 times
                  "cmp %0, #0\n"
-                 "bne loop\n"
+                 "bge loop\n"
                  :
                  : "r"(target)
                  : "r1");
-    target += 1;
 }
 
 /**

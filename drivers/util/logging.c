@@ -60,7 +60,7 @@ void LOG_E(char *format, ...) {
     va_list valist;
     // Start valist with format as last argument
     va_start(valist, format);
-    syslog(SYSLOGLEVEL_WARNING, format, valist);
+    syslog(SYSLOGLEVEL_ERROR, format, valist);
     // Free valist
     va_end(valist);
 }

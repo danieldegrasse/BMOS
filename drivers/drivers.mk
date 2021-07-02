@@ -7,6 +7,7 @@
 CC=$(TOOLCHAIN_ROOT)/bin/arm-none-eabi-gcc
 LD=$(TOOLCHAIN_ROOT)/bin/arm-none-eabi-ld
 OBJCOPY=$(TOOLCHAIN_ROOT)/bin/arm-none-eabi-objcopy
+GDB=$(TOOLCHAIN_ROOT)/bin/arm-none-eabi-gdb
 
 # Debugger command (Must be set by user)
 ## OPENOCD=openocd -f /usr/share/openocd/scripts/board/stm32l4discovery.cfg
@@ -62,6 +63,7 @@ debug: $(BUILDDIR)/$(PROG).bin
 # Disable system logging and optimize code for release build
 release: local_CFLAGS+=-O2 -DSYSLOG=3
 release: $(BUILDDIR)/$(PROG).bin
+	@echo "Release build"
 
 # Output compiled object files into BUILDDIR
 $(OBJDIR)/%.o: %.c

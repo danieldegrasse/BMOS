@@ -7,9 +7,9 @@
 
 #include <stdlib.h>
 
-#include <device/device.h>
-#include <uart/uart.h>
-#include <util/util.h>
+#include <drivers/device/device.h>
+#include <drivers/uart/uart.h>
+#include <sys/util/util.h>
 
 /* Structure of registered IRQ handlers */
 static struct { void (*uart_handler)(UART_periph_t); } irq_handlers = {0};

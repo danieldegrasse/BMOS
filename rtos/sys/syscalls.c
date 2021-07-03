@@ -18,11 +18,11 @@ extern int errno;
 #include <unistd.h>
 
 #include <config.h>
-#include <gpio/gpio.h>
-#include <semihost/semihost.h>
-#include <swo/swo.h>
+#include <drivers/gpio/gpio.h>
+#include <drivers/semihost/semihost.h>
+#include <drivers/swo/swo.h>
 #include <sys/err.h>
-#include <uart/uart.h>
+#include <drivers/uart/uart.h>
 
 extern char _ebss; // Defined by linker
 

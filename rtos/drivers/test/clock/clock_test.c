@@ -24,9 +24,9 @@
 
 #include <stdlib.h>
 
-#include <gpio/gpio.h>
-#include <sys/clock.h>
-#include <uart/uart.h>
+#include <drivers/gpio/gpio.h>
+#include <drivers/clock/clock.h>
+#include <drivers/uart/uart.h>
 
 #define DELAY 100000
 #define CYCLES 5

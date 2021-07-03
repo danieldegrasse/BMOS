@@ -1,8 +1,8 @@
 #include <stdint.h>
 
 #include "gpio.h"
-#include <device/device.h>
-#include <util/util.h>
+#include <drivers/device/device.h>
+#include <sys/util/util.h>
 
 /**
  * Configure a GPIO port for use with driver

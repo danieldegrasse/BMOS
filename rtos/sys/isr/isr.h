@@ -1,7 +1,7 @@
 #ifndef ISR_H
 #define ISR_H
 
-#include <uart/uart.h>
+#include <drivers/uart/uart.h>
 
 /**
  * UART ISR registration function.

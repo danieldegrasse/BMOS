@@ -11201,7 +11201,7 @@ typedef struct
 #define SAI_xCR1_LSBFIRST          SAI_xCR1_LSBFIRST_Msk                       /*!<LSB First Configuration  */
 #define SAI_xCR1_CKSTR_Pos         (9U)
 #define SAI_xCR1_CKSTR_Msk         (0x1UL << SAI_xCR1_CKSTR_Pos)               /*!< 0x00000200 */
-#define SAI_xCR1_CKSTR             SAI_xCR1_CKSTR_Msk                          /*!<ClocK STRobing edge      */
+#define SAI_xCR1_CKSTR             SAI_xCR1_CKSTR_Msk                          /*!<drivers/clock STRobing edge      */
 
 #define SAI_xCR1_SYNCEN_Pos        (10U)
 #define SAI_xCR1_SYNCEN_Msk        (0x3UL << SAI_xCR1_SYNCEN_Pos)              /*!< 0x00000C00 */
@@ -11552,16 +11552,16 @@ typedef struct
 /******************  Bit definition for SDMMC_CLKCR register  ******************/
 #define SDMMC_CLKCR_CLKDIV_Pos          (0U)
 #define SDMMC_CLKCR_CLKDIV_Msk          (0xFFUL << SDMMC_CLKCR_CLKDIV_Pos)     /*!< 0x000000FF */
-#define SDMMC_CLKCR_CLKDIV              SDMMC_CLKCR_CLKDIV_Msk                 /*!<Clock divide factor             */
+#define SDMMC_CLKCR_CLKDIV              SDMMC_CLKCR_CLKDIV_Msk                 /*!<drivers/clock divide factor             */
 #define SDMMC_CLKCR_CLKEN_Pos           (8U)
 #define SDMMC_CLKCR_CLKEN_Msk           (0x1UL << SDMMC_CLKCR_CLKEN_Pos)       /*!< 0x00000100 */
-#define SDMMC_CLKCR_CLKEN               SDMMC_CLKCR_CLKEN_Msk                  /*!<Clock enable bit                */
+#define SDMMC_CLKCR_CLKEN               SDMMC_CLKCR_CLKEN_Msk                  /*!<drivers/clock enable bit                */
 #define SDMMC_CLKCR_PWRSAV_Pos          (9U)
 #define SDMMC_CLKCR_PWRSAV_Msk          (0x1UL << SDMMC_CLKCR_PWRSAV_Pos)      /*!< 0x00000200 */
 #define SDMMC_CLKCR_PWRSAV              SDMMC_CLKCR_PWRSAV_Msk                 /*!<Power saving configuration bit  */
 #define SDMMC_CLKCR_BYPASS_Pos          (10U)
 #define SDMMC_CLKCR_BYPASS_Msk          (0x1UL << SDMMC_CLKCR_BYPASS_Pos)      /*!< 0x00000400 */
-#define SDMMC_CLKCR_BYPASS              SDMMC_CLKCR_BYPASS_Msk                 /*!<Clock divider bypass enable bit */
+#define SDMMC_CLKCR_BYPASS              SDMMC_CLKCR_BYPASS_Msk                 /*!<drivers/clock divider bypass enable bit */
 
 #define SDMMC_CLKCR_WIDBUS_Pos          (11U)
 #define SDMMC_CLKCR_WIDBUS_Msk          (0x3UL << SDMMC_CLKCR_WIDBUS_Pos)      /*!< 0x00001800 */
@@ -11875,10 +11875,10 @@ typedef struct
 /*******************  Bit definition for SPI_CR1 register  ********************/
 #define SPI_CR1_CPHA_Pos         (0U)
 #define SPI_CR1_CPHA_Msk         (0x1UL << SPI_CR1_CPHA_Pos)                   /*!< 0x00000001 */
-#define SPI_CR1_CPHA             SPI_CR1_CPHA_Msk                              /*!<Clock Phase      */
+#define SPI_CR1_CPHA             SPI_CR1_CPHA_Msk                              /*!<drivers/clock Phase      */
 #define SPI_CR1_CPOL_Pos         (1U)
 #define SPI_CR1_CPOL_Msk         (0x1UL << SPI_CR1_CPOL_Pos)                   /*!< 0x00000002 */
-#define SPI_CR1_CPOL             SPI_CR1_CPOL_Msk                              /*!<Clock Polarity   */
+#define SPI_CR1_CPOL             SPI_CR1_CPOL_Msk                              /*!<drivers/clock Polarity   */
 #define SPI_CR1_MSTR_Pos         (2U)
 #define SPI_CR1_MSTR_Msk         (0x1UL << SPI_CR1_MSTR_Pos)                   /*!< 0x00000004 */
 #define SPI_CR1_MSTR             SPI_CR1_MSTR_Msk                              /*!<Master Selection */

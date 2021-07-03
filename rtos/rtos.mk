@@ -12,8 +12,8 @@ GDB=$(TOOLCHAIN_ROOT)/bin/arm-none-eabi-gdb
 # Debugger command (Must be set by user)
 ## OPENOCD=openocd -f /usr/share/openocd/scripts/board/stm32l4discovery.cfg
 
-# Drivers directory
-##  DRIVERS=drivers # Must be set by user
+# RTOS directory
+##  RTOS=rtos # Must be set by user
 
 
 # Note that mthumb is required. Cortex M executes in T32 mode.
@@ -22,10 +22,10 @@ local_CFLAGS += -mcpu=cortex-m4 \
 	-Wall \
 	-Werror \
 	-ffreestanding \
-	-isystem $(DRIVERS) \
+	-isystem $(RTOS) \
 	-nostartfiles\
 	$(CFLAGS)
-local_LDFLAGS += -Wl,-T $(DRIVERS)/linker_script.ld \
+local_LDFLAGS += -Wl,-T $(RTOS)/linker_script.ld \
 	-Wl,-Map=$(BUILDDIR)/$(PROG).map \
 	$(LDFLAGS)
 
@@ -34,7 +34,7 @@ BUILDDIR=build
 
 # Excluded build paths. Should not have a trailing slash.
 # Any files in these directories will not be built
-EXCLUDED_DIRS=$(DRIVERS)/test
+EXCLUDED_DIRS=$(RTOS)/drivers/test
 
 ###### recursive wildcard function #######
 rwildcard=$(wildcard $1$2) $(foreach d, \
@@ -42,7 +42,7 @@ rwildcard=$(wildcard $1$2) $(foreach d, \
 	$(call rwildcard,$d/,$2))
 
 ## All directories to search for source files
-DIRS=$(DRIVERS)
+DIRS=$(RTOS)
 
 # Add all .c files in current directory to compilation
 SRCS=$(wildcard *.c)

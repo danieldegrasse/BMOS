@@ -7,7 +7,7 @@
  * - When B1 on the development board is held, blink D4 much quicker
  */
 
-#include <gpio/gpio.h>
+#include <drivers/gpio/gpio.h>
 #include <sys/err.h>
 
 /**

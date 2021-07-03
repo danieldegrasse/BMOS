@@ -2,12 +2,12 @@
  * @file swo.c
  * Implements support for single wire output protocol
  */
-#include <clock/clock.h>
-#include <device/device.h>
-#include <gpio/gpio.h>
+#include <drivers/clock/clock.h>
+#include <drivers/device/device.h>
+#include <drivers/gpio/gpio.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <util/util.h>
+#include <sys/util/util.h>
 
 #include "swo.h"
 

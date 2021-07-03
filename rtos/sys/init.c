@@ -6,8 +6,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#include <clock/clock.h>
-#include "isr.h"
+#include <drivers/clock/clock.h>
+#include <sys/isr/isr.h>
 
 // Variables declared in linker script
 extern unsigned char _srcdata;

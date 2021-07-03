@@ -6,10 +6,10 @@ TOOLCHAIN_ROOT=/usr
 OPENOCD=openocd -f /usr/share/openocd/scripts/board/stm32l4discovery.cfg
 
 # Drivers directory
-DRIVERS=$(subst /test/logging,, $(PWD))
+RTOS=$(subst /drivers/test/uart,, $(PWD))
 
 # Program name
-PROG=logging-test
+PROG=uart-test
 
 # Include drivers makefile
-include $(DRIVERS)/drivers.mk
+include $(RTOS)/rtos.mk

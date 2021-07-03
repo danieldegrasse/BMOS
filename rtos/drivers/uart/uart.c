@@ -6,13 +6,13 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <clock/clock.h>
-#include <device/device.h>
+#include <drivers/clock/clock.h>
+#include <drivers/device/device.h>
 #include <sys/err.h>
-#include <sys/isr.h>
-#include <util/logging.h>
-#include <util/ringbuf.h>
-#include <util/util.h>
+#include <sys/isr/isr.h>
+#include <sys/util/logging.h>
+#include <sys/util/ringbuf.h>
+#include <sys/util/util.h>
 
 #include "uart.h"
 

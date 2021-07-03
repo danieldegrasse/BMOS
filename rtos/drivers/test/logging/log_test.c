@@ -14,8 +14,8 @@
 #include <unistd.h>
 
 #include <config.h>
-#include <clock/clock.h>
-#include <util/logging.h>
+#include <drivers/clock/clock.h>
+#include <sys/util/logging.h>
 
 /**
  * Initializes system

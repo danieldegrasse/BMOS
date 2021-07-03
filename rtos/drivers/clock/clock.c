@@ -5,9 +5,9 @@
  */
 #include <stdlib.h>
 
-#include <device/device.h>
-#include <swo/swo.h>
-#include <util/util.h>
+#include <drivers/device/device.h>
+#include <drivers/swo/swo.h>
+#include <sys/util/util.h>
 
 #include "clock.h"
 

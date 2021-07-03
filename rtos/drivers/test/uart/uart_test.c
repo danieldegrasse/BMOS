@@ -10,9 +10,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <gpio/gpio.h>
-#include <sys/clock.h>
-#include <uart/uart.h>
+#include <drivers/gpio/gpio.h>
+#include <drivers/clock/clock.h>
+#include <drivers/uart/uart.h>
 
 /**
  * Sets up the GPIO pins used by the UART device

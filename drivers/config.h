@@ -20,17 +20,11 @@
 /** Full exit implementation. Logs code to debug output */
 #define SYSEXIT_FULL 1
 
-/** System abort types */
-/** Minimal abort implementation. Spins in a while loop */
-#define SYSABORT_MIN 0
-/** Full abort implementation. Logs abort reason to debug output */
-#define SYSABORT_FULL 1
-
 /** System heap constants */
 /** Empty heap. Disables memory allocation */
 #define SYSHEAPSIZE_NONE 0
 /** Default heap size. Can be changed */
-#define SYSHEAPSIZE_DEFAULT 2048
+#define SYSHEAPSIZE_DEFAULT 8192
 
 /** System log types */
 /** printf and logging directed to LPUART1, running at 115200 baud and 8n1. */
@@ -60,13 +54,6 @@
 #endif
 
 /**
- * System abort type. Set by passing -DSYSABORT=val
- */
-#ifndef SYSABORT
-#define SYSABORT SYSABORT_FULL
-#endif
-
-/**
  * System heap size in bytes. Set to 0 to disable memory allocation
  * Set by passing -DSYSHEAPSIZE=val
  */
@@ -79,7 +66,7 @@
  * Set by passing -DSYSLOG=val
  */
 #ifndef SYSLOG
-#define SYSLOG SYSLOG_SEMIHOST
+#define SYSLOG SYSLOG_SWO
 #endif
 
 /**
@@ -93,15 +80,12 @@
 /**
  * System log buffer size. The system will log to the buffer, and periodically
  * flush it to the output. If output flushing is desired, call
- * fsync(STDOUT_FILENO).
+ * fsync(STDOUT_FILENO). This is only used for semihosting.
  * Set by passing -DSYSLOGBUFSIZE=val
  */
 #ifndef SYSLOGBUFSIZE
-#if SYSLOG == SYSLOG_LPUART1
-#define SYSLOGBUFSIZE 0
-#else
 #define SYSLOGBUFSIZE 512
 #endif
-#endif
+
 
 #endif

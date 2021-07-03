@@ -12,6 +12,8 @@ typedef enum syserr {
     ERR_INUSE,     /*!< Device in use */
     ERR_NOSUPPORT, /*!< Feature support is not implemented */
     ERR_DEVICE,    /*!< Device Hardware error */
+    ERR_TIMEOUT,   /*!< Device or system timeout */
+    ERR_NOTINIT,   /*!< Device not initialized */
 } syserr_t;
 
 #endif

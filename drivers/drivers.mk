@@ -66,7 +66,7 @@ release: $(BUILDDIR)/$(PROG).bin
 	@echo "Release build"
 
 # Output compiled object files into BUILDDIR
-$(OBJDIR)/%.o: %.c
+$(OBJDIR)/%.o: %.c 
 	@ [ -d $(dir $@) ] || mkdir -p $(dir $@)
 	@ echo "[CC] $<"
 	@ $(CC) $(local_CFLAGS) -c -o $@ $< 
@@ -85,7 +85,8 @@ flash: $(BUILDDIR)/$(PROG).bin
 
 ## Start debugserver, which flashes the program at boot
 debugserver: $(BUILDDIR)/$(PROG).bin
-	$(OPENOCD) -c "program $^ 0x08000000 reset verify; reset init"
+	$(OPENOCD) -c "program $^ 0x08000000 reset verify; \
+	reset init; gdb_breakpoint_override hard"
 
 .PHONY: clean erase 
 

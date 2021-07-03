@@ -14,7 +14,7 @@
 #include <unistd.h>
 
 #include <config.h>
-#include <sys/clock.h>
+#include <clock/clock.h>
 #include <util/logging.h>
 
 /**

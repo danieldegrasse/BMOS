@@ -125,6 +125,11 @@ uint64_t msiclock_freq();
 uint64_t pllclock_freq();
 
 /**
+ * Returns the HCLK (APB) frequency
+ */
+uint64_t hclk_freq();
+
+/**
  * Returns the PCLK1 (APB1) frequency
  */
 uint64_t pclk1_freq();

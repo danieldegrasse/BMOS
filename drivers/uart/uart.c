@@ -6,8 +6,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <clock/clock.h>
 #include <device/device.h>
-#include <sys/clock.h>
 #include <sys/err.h>
 #include <sys/isr.h>
 #include <util/logging.h>
@@ -31,7 +31,7 @@ typedef struct {
     UART_config_t cfg;       /*!< User configuration for UART */
     USART_TypeDef *regs;     /*!< Register access for this UART */
     UART_state_t state;      /*!< UART state (open or closed) */
-    volatile bool tx_active;          /*!< Is UART transmission active */
+    volatile bool tx_active; /*!< Is UART transmission active */
     RingBuf_t write_buf;     /*!< UART write ring buffer (outgoing data)*/
     RingBuf_t read_buf;      /*!< UART read ring buffer (incoming data)*/
     UART_periph_t periph_id; /*!< Identifies the peripheral handle references */
@@ -212,6 +212,10 @@ int UART_read(UART_handle_t handle, uint8_t *buf, uint32_t len, syserr_t *err) {
                                   buf + num_read, len - num_read);
         unmask_irq();
     }
+    if (timeout == UART_TIMEOUT_NONE &&
+        ((UART_status_t *)handle)->cfg.UART_read_timeout != UART_TIMEOUT_NONE) {
+        *err = ERR_TIMEOUT;
+    }
     return num_read;
 }
 
@@ -288,6 +292,10 @@ int UART_write(UART_handle_t handle, uint8_t *buf, uint32_t len,
                 timeout -= 200;
             }
         }
+    }
+    if (timeout == UART_TIMEOUT_NONE &&
+        uart->cfg.UART_read_timeout != UART_TIMEOUT_NONE) {
+        *err = ERR_TIMEOUT;
     }
     return num_written;
 }

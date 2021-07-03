@@ -6,7 +6,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#include "clock.h"
+#include <clock/clock.h>
 #include "isr.h"
 
 // Variables declared in linker script

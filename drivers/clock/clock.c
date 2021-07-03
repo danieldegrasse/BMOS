@@ -6,6 +6,7 @@
 #include <stdlib.h>
 
 #include <device/device.h>
+#include <swo/swo.h>
 #include <util/util.h>
 
 #include "clock.h"
@@ -310,6 +311,11 @@ uint64_t lsi_freq() { return lsi32_freq; }
  * A value of zero indicates the oscillator is disabled
  */
 uint64_t hsi_freq() { return hsi16_freq; }
+
+/**
+ * Returns the HCLK (APB) frequency
+ */
+uint64_t hclk_freq() { return apb_freq; }
 
 /**
  * Delays the system by a given number of milliseconds.

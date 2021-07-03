@@ -20,6 +20,7 @@ extern int errno;
 #include <config.h>
 #include <gpio/gpio.h>
 #include <semihost/semihost.h>
+#include <swo/swo.h>
 #include <sys/err.h>
 #include <uart/uart.h>
 
@@ -30,6 +31,7 @@ char *__env[1] = {0};
 char **environ = __env;
 
 static char *current_sbrk = &_ebss;
+static char *max_sbrk = &_ebss; // Updated in initializer to keep GCC happy
 #if SYSLOG == SYSLOG_LPUART1
 static UART_handle_t uart_logger = NULL;
 #endif
@@ -59,6 +61,9 @@ void *_sbrk(int incr) {
         old_brk = current_sbrk;
         // Set the new break
         current_sbrk += incr;
+        if (current_sbrk > max_sbrk) {
+            return (void *)-1;
+        }
         // Todo: check for stack collision
         return old_brk;
     } else {
@@ -89,6 +94,15 @@ int _write(int fd, char *buf, int len) {
 #elif SYSLOG == SYSLOG_SEMIHOST
     // Buffer writes to increase speed
     semihost_writebuf(buf, len);
+    return len;
+#elif SYSLOG == SYSLOG_SWO
+    // Write directly to swo
+    syserr_t err;
+    err = SWO_writebuf(buf, len);
+    if (err != SYS_OK) {
+        errno = err;
+        return -1;
+    }
     return len;
 #else
     return -1;
@@ -157,18 +171,6 @@ static void lpuart_init(void) {
  */
 static void lpuart_deinit(void) { UART_close(uart_logger); }
 
-#elif SYSLOG == SYSLOG_SWO
-
-/**
- * Initializes SWO output registers
- */
-static void swo_init(void) {}
-
-/**
- * Resets SWO output registers at exit
- */
-static void swo_deinit(void) {}
-
 #endif
 
 /**
@@ -179,10 +181,14 @@ void _init(void) {
 #if SYSLOG == SYSLOG_LPUART1
     // Call LPUART1 constructor
     lpuart_init();
-#elif SYSLOG == SYSLOG_SWO
-    // Call swo initializer
-    swo_init();
 #endif
+    /**
+     * GCC complains when you try to initialize the max_sbrk as a static
+     * variable with the value &_ebss + SYSHEAPSIZE. It complains, logically
+     * enough, that you are indexing beyond the 1 byte _ebss supposedly is.
+     * Setting max_sbrk to the correct value here is the workaround.
+     */
+    max_sbrk += SYSHEAPSIZE;
 }
 
 /**
@@ -192,9 +198,6 @@ void _fini(void) {
 #if SYSLOG == SYSLOG_LPUART1
     // Call LPUART1 destructor
     lpuart_deinit();
-#elif SYSLOG == SYSLOG_SWO
-    // Reset SWO settings
-    swo_deinit();
 #endif
 }
 

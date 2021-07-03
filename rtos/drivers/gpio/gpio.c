@@ -2,7 +2,7 @@
 
 #include "gpio.h"
 #include <drivers/device/device.h>
-#include <sys/util/util.h>
+#include <util/bitmask.h>
 
 /**
  * Configure a GPIO port for use with driver

@@ -10,9 +10,9 @@
 #include <drivers/device/device.h>
 #include <sys/err.h>
 #include <sys/isr/isr.h>
-#include <sys/util/logging.h>
-#include <sys/util/ringbuf.h>
-#include <sys/util/util.h>
+#include <util/logging/logging.h>
+#include <util/ringbuf/ringbuf.h>
+#include <util/bitmask.h>
 
 #include "uart.h"
 

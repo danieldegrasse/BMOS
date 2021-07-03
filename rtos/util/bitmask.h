@@ -1,4 +1,4 @@
-/** @file util.h
+/** @file bitmask.h
  * Provides common macros, such as bitmasking, for use throughout the program
  */
 #ifndef UTIL_H

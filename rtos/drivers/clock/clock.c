@@ -7,7 +7,7 @@
 
 #include <drivers/device/device.h>
 #include <drivers/swo/swo.h>
-#include <sys/util/util.h>
+#include <util/bitmask.h>
 
 #include "clock.h"
 

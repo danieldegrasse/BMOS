@@ -7,7 +7,7 @@
 #include <drivers/gpio/gpio.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <sys/util/util.h>
+#include <util/bitmask.h>
 
 #include "swo.h"
 

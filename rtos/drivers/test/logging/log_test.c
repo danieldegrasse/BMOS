@@ -15,7 +15,7 @@
 
 #include <config.h>
 #include <drivers/clock/clock.h>
-#include <sys/util/logging.h>
+#include <util/logging/logging.h>
 
 /**
  * Initializes system

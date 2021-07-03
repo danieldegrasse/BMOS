@@ -96,7 +96,7 @@ int _write(int fd, char *buf, int len) {
     semihost_writebuf(buf, len);
     return len;
 #elif SYSLOG == SYSLOG_SWO
-    // Write directly to swo
+    // Write directly to SWO
     syserr_t err;
     err = SWO_writebuf(buf, len);
     if (err != SYS_OK) {

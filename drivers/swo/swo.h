@@ -8,13 +8,6 @@
 #include <sys/err.h>
 
 /**
- * Initializes SWO output with the defined frequency
- * @param freq: frequency for SWO output
- * @return SYS_OK on success, or error value on failure
- */
-//syserr_t SWO_init(int freq);
-
-/**
  * Writes a single character to the SWO output.
  * This character will be sent immediately.
  * @param c character to write
@@ -31,10 +24,5 @@ syserr_t SWO_writechar(char c);
  * @return SYS_OK on success, or SYS_ERR on error
  */
 syserr_t SWO_writebuf(char *buf, int len);
-
-/**
- * Shuts down SWO, resetting debugging registers
- */
-//void SWO_close();
 
 #endif

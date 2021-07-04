@@ -24,7 +24,7 @@
 /** Empty heap. Disables memory allocation */
 #define SYSHEAPSIZE_NONE 0
 /** Default heap size. Can be changed */
-#define SYSHEAPSIZE_DEFAULT 8192
+#define SYSHEAPSIZE_DEFAULT 16384
 
 /** System log types */
 /** printf and logging directed to LPUART1, running at 115200 baud and 8n1. */

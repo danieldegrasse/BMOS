@@ -10,9 +10,9 @@
 #include <drivers/device/device.h>
 #include <sys/err.h>
 #include <sys/isr/isr.h>
+#include <util/bitmask.h>
 #include <util/logging/logging.h>
 #include <util/ringbuf/ringbuf.h>
-#include <util/bitmask.h>
 
 #include "uart.h"
 
@@ -437,7 +437,7 @@ static void UART_interrupt(UART_periph_t source) {
         }
         // Store the data
         if (buf_write(&(handle->read_buf), data) != SYS_OK) {
-            LOG_D("Dropping character from UART");
+            LOG_D(__FILE__, "Dropping character from UART");
             // Write 1 to RXFRQ to drop the data
             SETBITS(handle->regs->RQR, USART_RQR_RXFRQ);
         }

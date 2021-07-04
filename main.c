@@ -34,7 +34,6 @@ static void system_init() {
     clock_init(&clk_cfg);
 }
 
-
 struct list_entry {
     char *data;
     list_state_t state;
@@ -170,6 +169,22 @@ int main() {
             exit(ERR_FAIL);
         }
         printf("\n");
+    }
+    printf(
+        "Test 6: Removing all elements\n"
+        "This test should print out the list contents as they are removed\n");
+    i = 0;
+    while (list != NULL) {
+        ret = list_get_head(list);
+        printf("%c", *((char *)ret->data));
+        list = list_remove(list, &(ret->state));
+        i++;
+    }
+    printf("\n");
+    if (i == sizeof(data)) {
+        printf("Test 6 passed\n");
+    } else {
+        printf("Test 6 failed\n");
     }
     printf("If expected outputs matched actual, all tests passed\n");
     return SYS_OK;

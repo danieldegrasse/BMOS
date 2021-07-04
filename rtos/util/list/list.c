@@ -81,6 +81,10 @@ list_t list_remove(list_t list, list_state_t *target) {
         return NULL;
     }
     head = (list_state_t *)list;
+    if (target->_next == target) {
+        // List has one entry. Return null for empty list.
+        head = NULL;
+    }
     if (target == head) {
         // Move head to next entry
         head = head->_next;

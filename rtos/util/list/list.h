@@ -74,7 +74,8 @@ void* list_iterate(list_t list, list_return_t (*itr)(void *));
  * Remove the provided list_state_t from the list
  * @param list: list to remove from
  * @param target: list element state to remove
- * @return new list on success, or NULL on error
+ * @return new list on success, or NULL on error. NULL is also returned if
+ * list is empty.
  */
 list_t list_remove(list_t list, list_state_t* target);
 

@@ -46,13 +46,15 @@ typedef enum block_reason {
  */
 typedef struct task_status {
     regstate_t registers;      /*!< task register state */
-    syserr_t (*entry)(void *); /*!< task entry point */
+    void (*entry)(void *);     /*!< task entry point */
     void *arg;                 /*!< Task argument */
     task_state_t state;        /*!< state of task */
     block_reason_t blockcause; /*!< cause for task block */
     char *stack_start;         /*!< Start of task stack */
     char *stack_end;           /*!< End of task stack */
+    syserr_t task_ret;         /*!< Task return value */
     uint32_t priority;         /*!< Task priority */
+    list_state_t list_state; /*!< Task list state */
 } task_status_t;
 
 // Task control block lists
@@ -64,18 +66,18 @@ list_t blocked_tasks = NULL;
  * Creates a system task. Requires memory allocation to be enabled to succeed.
  * Task will be scheduled, but will not start immediately.
  * @param entry: task entry point. Must be a function taking a void* and
- * returning a type of syserr_t
+ * returning void
  * @param arg: task argument. May be NULL. Will be passed to the task entry
  * point function
  * @param cfg: task configuration structure. May be NULL
  * @return created task handle on success, or NULL on error
  */
-task_handle_t task_create(syserr_t (*entry)(void *), void *arg,
+task_handle_t task_create(void (*entry)(void *), void *arg,
                           task_config_t *cfg) {
     task_status_t *task;
     // Check parameters
     if (entry == NULL) {
-        return;
+        return NULL;
     }
     task = malloc(sizeof(task_status_t));
     if (task == NULL) {
@@ -112,7 +114,7 @@ task_handle_t task_create(syserr_t (*entry)(void *), void *arg,
     task->entry = entry;
     task->arg = arg;
     // Mark task as ready to run
-    ready_tasks = list_append(ready_tasks, task);
+    ready_tasks = list_append(ready_tasks, task, &(task->list_state));
     return (task_handle_t)task;
 };
 

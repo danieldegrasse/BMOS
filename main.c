@@ -34,6 +34,12 @@ static void system_init() {
     clock_init(&clk_cfg);
 }
 
+
+struct list_entry {
+    char *data;
+    list_state_t state;
+};
+
 /**
  * Prints entries of list
  */
@@ -43,7 +49,7 @@ static list_return_t print_iterator(void *elem) {
         LOG_E(TAG, "print interator failed: null value");
         exit(ERR_FAIL);
     }
-    char *ch = (char *)elem;
+    char *ch = ((struct list_entry *)elem)->data;
     printf("%c", *ch);
     return LST_CONT; // Iterate further in list
 }
@@ -57,13 +63,15 @@ static list_return_t find_first_D(void *elem) {
         LOG_E(TAG, "print interator failed: null value");
         exit(ERR_FAIL);
     }
-    char *ch = (char *)elem;
+    char *ch = ((struct list_entry *)elem)->data;
     if (*ch == 'D') {
         return LST_BRK;
     } else {
         return LST_CONT;
     }
 }
+static char data[] = "Test Data elements";
+static struct list_entry elements[sizeof(data) + 2];
 
 /**
  * Base RTOS testing point
@@ -71,13 +79,14 @@ static list_return_t find_first_D(void *elem) {
 int main() {
     system_init();
     int i;
-    void *ret;
-    char data[] = "Test Data elements";
+    struct list_entry *ret;
     // Make list
     list_t list = NULL;
     for (i = 0; i < sizeof(data) - 1; i++) {
+        // Populate list entry
+        elements[i].data = data + i;
         // Append to list
-        list = list_append(list, &data[i]);
+        list = list_append(list, (elements + i), &elements[i].state);
         if (list == NULL) {
             LOG_E(TAG, "List return value was null");
             exit(ERR_FAIL);
@@ -90,14 +99,16 @@ int main() {
            data);
     ret = list_iterate(list, print_iterator);
     printf("\n");
-    if ((char *)ret != &data[i - 1]) {
+    if ((struct list_entry *)ret != &elements[i - 1]) {
         // returned value should have been last list entry
         LOG_E(TAG, "Iterator has bad return value. Expected %p, got %p",
-              &data[i], ret);
+              &elements[i - 1], ret);
         exit(ERR_FAIL);
     }
     // Test list prepending
-    list = list_prepend(list, &data[sizeof(data) - 1]);
+    elements[sizeof(data)].data = &data[0];
+    list = list_prepend(list, &elements[sizeof(data)],
+                        &elements[sizeof(data)].state);
     if (list == NULL) {
         LOG_E(TAG, "List return value was null");
         exit(ERR_FAIL);
@@ -106,19 +117,19 @@ int main() {
     printf("Test 2: Valid list prepend\n"
            "Expected printout: %c%s\n"
            "Actual printout: ",
-           data[sizeof(data) - 1], data);
+           data[0], data);
     ret = list_iterate(list, print_iterator);
     printf("\n");
-    if ((char *)ret != &data[i - 1]) {
+    if (ret != &elements[i - 1]) {
         // returned value should have been last list entry
         LOG_E(TAG, "Iterator has bad return value. Expected %p, got %p",
-              &data[i - 1], ret);
+              &elements[i - 1], ret);
         exit(ERR_FAIL);
     }
     // Verify that list iteration can find a value
     printf("Test 3: valid list iteration\n");
     ret = list_iterate(list, find_first_D);
-    if ((char *)ret != &data[5]) {
+    if (ret != &elements[5]) {
         LOG_E(TAG, "Test 3 failed");
         exit(ERR_FAIL);
     } else {
@@ -126,8 +137,8 @@ int main() {
     }
     // Verify that list filtering functions
     printf("Test 4: list removal\n");
-    ret = list_remove(list, find_first_D);
-    if ((char *)ret != &data[5]) {
+    list = list_remove(list, &(ret->state));
+    if (list == NULL) {
         LOG_E(TAG, "Test 4 failed");
         exit(ERR_FAIL);
     } else {
@@ -136,26 +147,26 @@ int main() {
     printf("List contents: ");
     // Verify that list does not have first D
     ret = list_iterate(list, print_iterator);
-    if ((char *)ret != &data[i - 1]) {
+    if ((struct list_entry *)ret != &elements[i - 1]) {
         // returned value should have been last list entry
         LOG_E(TAG, "Iterator has bad return value. Expected %p, got %p",
-              &data[i - 1], ret);
+              &elements[i - 1], ret);
         exit(ERR_FAIL);
     }
     printf("\n");
     // Verify that list can handle another append
     printf("Test 5: List append after remove\n");
-    list = list_append(list, &data[5]);
+    list = list_append(list, &elements[5], &elements[5].state);
     if (list == NULL) {
         LOG_E(TAG, "List return value was null");
         exit(ERR_FAIL);
     } else {
         printf("Test 5 passed\nList contents: ");
         ret = list_iterate(list, print_iterator);
-        if ((char *)ret != &data[5]) {
+        if ((struct list_entry *)ret != &elements[5]) {
             // returned value should have been last list entry
             LOG_E(TAG, "Iterator has bad return value. Expected %p, got %p",
-                  &data[i - 1], ret);
+                  &elements[5], ret);
             exit(ERR_FAIL);
         }
         printf("\n");

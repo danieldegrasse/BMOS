@@ -10,6 +10,8 @@
 
 #define DEFAULT_STACKSIZE 2048
 #define DEFAULT_PRIORITY 5
+#define RTOS_PRIORITY_COUNT 7 // 7 independent priority levels
+#define IDLE_TASK_PRIORITY 0
 
 typedef void *task_handle_t;
 
@@ -21,6 +23,7 @@ typedef struct task_config {
     int task_stacksize; /*!< Desired size of task stack. If stack is provided
                            set this to size of task stack*/
     uint32_t task_priority; /*!< Task priority */
+    char *task_name;        /*< Optional task name */
 } task_config_t;
 
 /**
@@ -53,7 +56,34 @@ void task_destroy(task_handle_t task);
 #define DEFAULT_TASK_CONFIG                                                    \
     {                                                                          \
         .task_stack = NULL, .task_stacksize = DEFAULT_STACKSIZE,               \
-        .task_priority = DEFAULT_PRIORITY                                      \
+        .task_priority = DEFAULT_PRIORITY, .task_name = ""                     \
     }
+
+/**
+ * System context switch handler. Stores core registers for current
+ * execution context, then selects the highest priority ready task to run.
+ *
+ * This function SHOULD NOT BE CALLED BY THE USER. It is indended to run in
+ * Handler mode, as the PendSV isr
+ */
+void PendSVHandler();
+
+/**
+ * System task creation handler. Populates core registers for a new task,
+ * allowing it to be selected to run
+ *
+ * This function SHOULD NOT BE CALLED BY THE USER. It is indended to run in
+ * Handler mode, as the SVCall isr
+ */
+void SVCallHandler();
+
+/**
+ * System tick handler. Handles periodic RTOS tasks, such as checking to see
+ * if blocked tasks are now unblocked, and preempting tasks if enabled.
+ *
+ * This function SHOULD NOT BE CALLED BY THE USER. It is indended to run in
+ * Handler mode, as the PendSV isr
+ */
+void SysTickHandler();
 
 #endif

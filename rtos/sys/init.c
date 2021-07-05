@@ -8,6 +8,7 @@
 
 #include <drivers/clock/clock.h>
 #include <sys/isr/isr.h>
+#include <sys/task/task.h>
 
 // Variables declared in linker script
 extern unsigned char _srcdata;
@@ -42,11 +43,11 @@ const uint32_t exception_vectors[] __attribute__((section(".vectors"))) = {
     (uint32_t)0,                 /*!< -8 Reserved */
     (uint32_t)0,                 /*!< -7 Reserved */
     (uint32_t)0,                 /*!< -6 Reserved */
-    (uint32_t)SVCall_irq,        /*!< -5 SVCall */
+    (uint32_t)SVCallHandler,     /*!< -5 SVCall */
     (uint32_t)DebugMonitor_irq,  /*!< -4 Debug Monitor */
     (uint32_t)0,                 /*!< -3 Reserved */
-    (uint32_t)PendSV_irq,        /*!< -2 PendSV */
-    (uint32_t)Systick_irq,       /*!< -1 Systick */
+    (uint32_t)PendSVHandler,     /*!< -2 PendSV */
+    (uint32_t)SysTickHandler,    /*!< -1 Systick */
     (uint32_t)DefaultISRHandler, /*!< 0 Window Watchdog */
     (uint32_t)DefaultISRHandler, /*!< 1 PVD/PVM1 thru EXTI */
     (uint32_t)DefaultISRHandler, /*!< 2 RTC Tamper or timestamp */

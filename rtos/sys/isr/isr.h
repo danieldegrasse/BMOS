@@ -66,24 +66,9 @@ void BusFault_irq();
 void UsageFault_irq();
 
 /**
- * SVCall interrupt handler
- */
-void SVCall_irq();
-
-/**
  * Debug monitor interrupt handler
  */
 void DebugMonitor_irq();
-
-/**
- * PendSV interrupt handler
- */
-void PendSV_irq();
-
-/**
- * Systick interrupt handler
- */
-void Systick_irq();
 
 /**
  * UART ISR handler. Handles IRQ numbers 37, 38, 39 and 70

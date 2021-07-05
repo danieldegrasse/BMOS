@@ -147,33 +147,9 @@ void UsageFault_irq() {
 }
 
 /**
- * SVCall interrupt handler
- */
-void SVCall_irq() {
-    while (1)
-        ;
-}
-
-/**
  * Debug monitor interrupt handler
  */
 void DebugMonitor_irq() {
-    while (1)
-        ;
-}
-
-/**
- * PendSV interrupt handler
- */
-void PendSV_irq() {
-    while (1)
-        ;
-}
-
-/**
- * Systick interrupt handler
- */
-void Systick_irq() {
     while (1)
         ;
 }

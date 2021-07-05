@@ -21,8 +21,6 @@
 #define SYSEXIT_FULL 1
 
 /** System heap constants */
-/** Empty heap. Disables memory allocation */
-#define SYSHEAPSIZE_NONE 0
 /** Default heap size. Can be changed */
 #define SYSHEAPSIZE_DEFAULT 16384
 

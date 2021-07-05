@@ -10,14 +10,14 @@
 
 #include "logging.h"
 
-static void syslog(int log_level, char *tag, char *format, va_list ap);
+static void syslog(int log_level, const char *tag, char *format, va_list ap);
 
 /**
  * System debugging log. Uses same format as printf
  * @param tag: logging tag
  * @param format: printf style formatting string
  */
-void LOG_D(char *tag, char *format, ...) {
+void LOG_D(const char *tag, char *format, ...) {
     va_list valist;
     // Start valist with format as last argument
     va_start(valist, format);
@@ -31,7 +31,7 @@ void LOG_D(char *tag, char *format, ...) {
  * @param tag: logging tag
  * @param format: printf style formatting string
  */
-void LOG_I(char *tag, char *format, ...) {
+void LOG_I(const char *tag, char *format, ...) {
     va_list valist;
     // Start valist with format as last argument
     va_start(valist, format);
@@ -45,7 +45,7 @@ void LOG_I(char *tag, char *format, ...) {
  * @param tag: logging tag
  * @param format: printf style formatting string
  */
-void LOG_W(char *tag, char *format, ...) {
+void LOG_W(const char *tag, char *format, ...) {
     va_list valist;
     // Start valist with format as last argument
     va_start(valist, format);
@@ -59,7 +59,7 @@ void LOG_W(char *tag, char *format, ...) {
  * @param tag: logging tag
  * @param format: printf style formatting string
  */
-void LOG_E(char *tag, char *format, ...) {
+void LOG_E(const char *tag, char *format, ...) {
     va_list valist;
     // Start valist with format as last argument
     va_start(valist, format);
@@ -68,7 +68,7 @@ void LOG_E(char *tag, char *format, ...) {
     va_end(valist);
 }
 
-static void syslog(int log_level, char *tag, char *format, va_list ap) {
+static void syslog(int log_level, const char *tag, char *format, va_list ap) {
     if (log_level >= SYSLOGLEVEL) {
         // Log message level
         switch (log_level) {

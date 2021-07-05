@@ -31,6 +31,5 @@ static void system_init() {
  */
 int main() {
     system_init();
-    task_yield(); 
     return SYS_OK;
 }

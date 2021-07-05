@@ -64,7 +64,6 @@ void *_sbrk(int incr) {
         if (current_sbrk > max_sbrk) {
             return (void *)-1;
         }
-        // Todo: check for stack collision
         return old_brk;
     } else {
         // No memory allocation

@@ -12,6 +12,8 @@
 #define DEFAULT_PRIORITY 5
 #define RTOS_PRIORITY_COUNT 7 // 7 independent priority levels
 #define IDLE_TASK_PRIORITY 0
+#define IDLE_TASK_STACK_SIZE 512
+#define SYSTICK_FREQ 1000 // Every 1ms (1000Hz)
 
 typedef void *task_handle_t;
 
@@ -51,6 +53,14 @@ void task_yield();
 void task_destroy(task_handle_t task);
 
 /**
+ * Starts the real time operating system. This function will not return.
+ *
+ * Once the RTOS starts, scheduled tasks will start executing based on priority.
+ * If no tasks are scheduled, this function will essentially freeze the system.
+ */
+void rtos_start();
+
+/**
  * Default task configuration
  */
 #define DEFAULT_TASK_CONFIG                                                    \
@@ -58,6 +68,8 @@ void task_destroy(task_handle_t task);
         .task_stack = NULL, .task_stacksize = DEFAULT_STACKSIZE,               \
         .task_priority = DEFAULT_PRIORITY, .task_name = ""                     \
     }
+
+/** ------------------------ End user functions ---------------------------- */
 
 /**
  * System context switch handler. Stores core registers for current
@@ -69,8 +81,10 @@ void task_destroy(task_handle_t task);
 void PendSVHandler();
 
 /**
- * System task creation handler. Populates core registers for a new task,
- * allowing it to be selected to run
+ * System task creation handler. Saves current processor state into the
+ * new_task structure, so that new_task can be resumed from the current point
+ * in execution. Also switches the processor to use the process stack. Does
+ * not modify the program counter or stack pointer.
  *
  * This function SHOULD NOT BE CALLED BY THE USER. It is indended to run in
  * Handler mode, as the SVCall isr

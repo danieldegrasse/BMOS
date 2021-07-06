@@ -15,11 +15,30 @@ static void system_init() {
     clock_init(&clk_cfg);
 }
 
+// static void rtos_task1(void* unused) {
+//     const char *TAG = "Rtos_Task1";
+//     LOG_D(TAG, "Task 1 starting");
+//     while (1) {
+//         delay_ms(500);
+//         LOG_D(TAG, "Task 1 running\n");
+//     }
+// }
+
 /**
  * Base RTOS testing point
  */
 int main() {
+    // task_handle_t task1;
+    // task_config_t task1cfg = DEFAULT_TASK_CONFIG;
+
     system_init();
+    
+    // task1cfg.task_name = "Task1";
+    // task1 = task_create(rtos_task1, NULL, &task1cfg);
+    // if (!task1) {
+    //     LOG_E(__FILE__, "Failed to create task 1\n");
+    //     return ERR_FAIL;
+    // }
     LOG_D(__FILE__, "Starting RTOS");
     rtos_start();
     return SYS_OK;

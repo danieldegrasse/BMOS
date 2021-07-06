@@ -18,6 +18,11 @@
 #include "task.h"
 
 #define reg_t volatile uint32_t
+
+/* Initial task register states */
+#define INITIAL_xPSR 0x01000000 // T bit is set in EPSR (thumb instructions)
+#define INITIAL_EXEC_RETURN 0xFFFFFFFD // Thread mode with process stack
+
 /**
  * Task state enum
  */
@@ -41,13 +46,13 @@ typedef enum block_reason {
  * Task control block. Keeps task status and recordkeeping information.
  */
 typedef struct task_status {
-    char *stack_ptr;           /*!< Task stack pointer. MUST be first entry*/
+    uint32_t *stack_ptr;       /*!< Task stack pointer. MUST be first entry*/
     char *stack_start;         /*!< Task stack start */
     char *stack_end;           /*!< End of task stack */
     void (*entry)(void *);     /*!< task entry point */
     void *arg;                 /*!< Task argument */
     task_state_t state;        /*!< state of task */
-    char *name;                /*!< Task name */
+    const char *name;                /*!< Task name */
     bool stack_allocated;      /*!< Was the stack allocated? */
     block_reason_t blockcause; /*!< cause for task block */
     uint32_t priority;         /*!< Task priority */
@@ -56,17 +61,21 @@ typedef struct task_status {
 
 // Task control block lists
 static task_status_t *active_task = NULL;
-static task_status_t *new_task = NULL; // Used by SVCall
 static list_t ready_tasks[RTOS_PRIORITY_COUNT] = {NULL};
 static list_t blocked_tasks = NULL;
 
 // Logging tag
 const char *TAG = "task.c";
+// Idle task name
+const char *IDLE_TASK_NAME = "Idle Task";
 
 // Static functions
 static inline void set_pendsv();
 static inline void trigger_svcall();
 static void idle_entry(void *arg);
+static uint32_t *initialize_task_stack(uint32_t *stack_ptr, void *return_pc,
+                                       void *arg0);
+static void task_exithandler();
 
 /**
  * Creates a system task. Requires memory allocation to be enabled to succeed.
@@ -133,14 +142,21 @@ task_handle_t task_create(void (*entry)(void *), void *arg,
     task->state = TASK_READY;
     task->entry = entry;
     task->arg = arg;
-    // Set new_task to this task, and trigger sv call
-    new_task = task;
-    trigger_svcall(); // Execution will resume here on context switch
-    if (active_task == task) {
-        // A context switch selected this task. Run entry function
-        task->entry(task->arg);
+    // Initialize task stack
+    task->stack_ptr = initialize_task_stack((uint32_t *)task->stack_start,
+                                            task->entry, task->arg);
+    // Place this task into the ready queue (scheduler can select it)
+    ready_tasks[task->priority] =
+        list_append(ready_tasks[task->priority], task, &(task->list_state));
+    if (ready_tasks[task->priority] == NULL) {
+        LOG_E(TAG, "Could not append new task to ready list");
+        free(task);
+        if (task->stack_allocated) {
+            free(task->stack_start);
+        }
+        return NULL;
     }
-    // SVCall exception handled. Return to calling task.
+    // Return task handle
     return (task_handle_t)task;
 };
 
@@ -148,80 +164,25 @@ task_handle_t task_create(void (*entry)(void *), void *arg,
  * Starts the real time operating system. This function will not return.
  *
  * Once the RTOS starts, scheduled tasks will start executing based on priority.
- * If no tasks are scheduled, this function will essentially freeze the system.
+ * If no tasks are scheduled, this function will essentially freeze the system
+ * in the idle task.
  */
 void rtos_start() {
-    task_status_t *task;
-    uint32_t reload_val;
-    /**
-     * TODO:
-     * 1. create a task control block for idle process (set a low priority,
-     *    use the initial stack as the process stack)
-     * 2. set this TCB as the new_task
-     * 3. trigger an SVCall to populate the stack with saved registers
-     * 4. set the idle task TCB as the active task
-     * 5. enable the systick interrupt
-     * 6. run the idle task
-     */
+    task_handle_t idle_task;
+    task_config_t idle_task_cfg = DEFAULT_TASK_CONFIG;
     /* Create a task control block for idle process */
-    task = malloc(sizeof(task_status_t));
-    if (task == NULL) {
-        LOG_E(TAG, "Could not allocate idle task control block");
-        exit(ERR_NOMEM);
+    idle_task_cfg.task_name = IDLE_TASK_NAME;
+    idle_task_cfg.task_priority = IDLE_TASK_PRIORITY;
+    idle_task_cfg.task_stacksize = IDLE_TASK_STACK_SIZE;
+    idle_task = task_create(idle_entry, NULL, &idle_task_cfg);
+    if (!idle_task) {
+        LOG_E(TAG, "Could not create idle task");
+        exit(ERR_SCHEDULER);
     }
-    // Populate remaining idle task configuration
-    task->priority = IDLE_TASK_PRIORITY;
-    task->name = "Idle Task";
-    task->entry = idle_entry;
-    task->arg = NULL;
-    task->blockcause = BLOCK_NONE;
-    task->state = TASK_ACTIVE;
-    // Allocate task stack
-    task->stack_end = malloc(IDLE_TASK_STACK_SIZE);
-    if (task->stack_start == NULL) {
-        LOG_E(TAG, "Could not allocate idle task stack");
-        exit(ERR_NOMEM);
-    }
-    task->stack_start = task->stack_end + (IDLE_TASK_STACK_SIZE - 1);
-    task->stack_ptr = task->stack_start;
-    // Set this task as the active one
-    active_task = task;
-    /**
-     * The stm32l433 defaults to sourcing the systick clock as HCLK divided
-     * by 8. We must set the reload value (24 bits) to achieve the desired
-     * systick rate of 5ms
-     */
-    reload_val = (hclk_freq() >> 3) / SYSTICK_FREQ;
-    if (reload_val > SysTick_LOAD_RELOAD_Msk) {
-        LOG_E(TAG, "Oversized systick reload value");
-        exit(ERR_BADPARAM);
-    }
-    // Set the reload value (interrupt fires when counting from 1 to 0)
-    SysTick->LOAD = reload_val - 1;
-    // Enable the systick interrupt
-    SETBITS(SysTick->CTRL, SysTick_CTRL_TICKINT_Msk | SysTick_CTRL_ENABLE_Msk);
-    /**
-     * Switch to process stack. To do so, we must set the process stack pointer,
-     * and set the SPSEL bit in the CONTROL register. Once the switch to the
-     * process stack is complete, we will have lost all data on our main stack.
-     * Just break into the idle task entry function
-     */
-    asm volatile(
-        "msr PSP, %[stack_start]\n"
-        "mov r0, #0x2\n"
-        "msr CONTROL, r0\n" // Set control register to 0x2 (SPSEL bit set)
-        "isb\n"             // Ensure the change to process stack pointer occurs
-        "bl idle_entry\n"   // Break into the idle loop
-        // If we get to this instruction, idle loop exited. Switch back to main
-        // stack.
-        "mov r0, #0x0\n"
-        "msr CONTROL, r0\n"
-        "isb\n"
-        :
-        : [ stack_start ] "r"(task->stack_start));
-    // If the idle loop returns, log an error
-    LOG_E(TAG, "Idle loop returned!");
-    exit(ERR_FAIL);
+    // Trigger an SVCall to start the scheduler. Will not return.
+    trigger_svcall();
+    LOG_E(TAG, "Scheduler returned without starting RTOS");
+    exit(ERR_SCHEDULER);
 }
 
 /**
@@ -242,9 +203,8 @@ void task_yield() {
 void task_destroy(task_handle_t task) {}
 
 /**
- * System task creation handler
- * Saves current processor state into the new_task structure, so that new_task
- * can be resumed from the current point in execution.
+ * SVCall handler. Enables the system tick, switches the processor to the
+ * process stack, and starts the RTOS scheduler.
  *
  * This function SHOULD NOT BE CALLED BY THE USER. It is indended to run in
  * Handler mode, as the SVCall isr
@@ -255,21 +215,30 @@ __attribute__((naked)) void SVCallHandler() {
      * epilogue code, which can leave the stack in an invalid state when
      * using bx instructions
      */
-    /**
-     * Save the context of the new task. Assume we are using psp
-     */
-    asm volatile("bkpt\n"                 // For testing code
-                 "mrs r0, psp\n"          // Load process stack pointer to r0
-                 "mov r1, r0\n"           // Save current stack pointer
-                 "ldr r3, %[new_task] \n" // Load memory location of new task
-
-                 "stmfd r0!, {r4-r11, lr}\n" // Save calle-saved registers
-                 "str r0, [r3]\n"            // Store the new top of the stack
-
-                 "bx lr\n" // Exception return. Core will intercept load of
-                           // 0xFXXXXXXX to PC and return from exception
-                 :
-                 : [ new_task ] "m"(new_task));
+    asm volatile(
+        "bkpt\n" // For testing code
+        /* Reset the main stack pointer to initial value. */
+        "lsr r0, %[VTOR], #0x7\n" // get exception vector address from VTOR
+        "ldr r1, [r0]\n"          // load initial stack pointer from vectors
+        "msr MSP, r1\n"           // set main stack pointer to initial value
+        /* Select an active task to run, and enable systick */
+        "cpsid i\n"               // Set primask to 1 to disable interrupts
+        "stmfd sp!, {r0-r3}\n"    // Save caller saved regs to main stack
+        "bl select_active_task\n" // break to function to select new active task
+        "bl enable_systick\n"  // break to function to enable systick interrupt
+        "ldmfd sp!, {r0-r3}\n" // Restore registers after function calls
+        "cpsie i\n"            // Set primask to 0 to enable interrupts
+        /* Active task now set. Restore its register state and switch to it */
+        "ldr r0, %[active_task]\n" // Load active task struct
+        "ldr r1, [r0]\n" // Load address of top of stack for active task
+        /* Restore register state for task */
+        "ldmfd r1!, {r4-r11, lr}\n" // Restore calle-saved registers
+        "msr PSP, r1\n" // Load new stack pointer after restoring register
+        /* Task lr value will force return into thread mode with psp enabled */
+        /* Loading EXEC_RETURN value in $lr reg will force exception to exit */
+        "bx lr\n" // Load EXEC_RETURN value into PC. Core will intercept call
+        :
+        : [ VTOR ] "r"(SCB->VTOR), [ active_task ] "m"(active_task));
 }
 
 /**
@@ -300,16 +269,14 @@ __attribute__((naked)) void PendSVHandler() {
 
         "cpsid i\n"               // Disable interrupts (set PRIMASK to 1)
         "stmfd sp!, {r0-r3}\n"    // Save caller saved regs to main stack
-        "bl select_active_task\n" // Call Sfunction to select new active
-                                  // task
+        "bl select_active_task\n" // Call function to select new active task
         "ldmfd sp!, {r0-r3}\n"    // Restore registers after function call
         "cpsie i\n"               // Reenable interrupt
 
         "ldr r2, [r3]\n" // Reload data stored in active_task
         "ldr r0, [r2]\n" // Load the address of the top of task stack
 
-        "ldmfd r0!, {r4-r11, lr}\n" // Restore calle-saved registers for
-                                    // task
+        "ldmfd r0!, {r4-r11, lr}\n" // Restore calle-saved registers for task
         "msr psp, r0\n"             // Load r0 as the stack pointer
 
         "bx lr\n" // Exception return. Core will intercept load of
@@ -355,21 +322,100 @@ void select_active_task() {
     // Select the head of this ready task list
     new_active = list_get_head(ready_tasks[i]);
     ready_tasks[i] = list_remove(ready_tasks[i], &(new_active->list_state));
-    /**
-     * Based on the block state of the active task, store it in a blocked
-     * list or the ready list
-     */
-    if (active_task->state == TASK_BLOCKED) {
-        blocked_tasks =
-            list_append(blocked_tasks, active_task, &(active_task->list_state));
-    } else {
-        // Append active task to appropriate ready list
-        ready_tasks[i] = list_append(ready_tasks[i], active_task,
-                                     &(active_task->list_state));
+    if (active_task != NULL) { // active task will be null on scheduler start
+        /**
+         * Based on the block state of the active task, store it in a blocked
+         * list or the ready list
+         */
+        if (active_task->state == TASK_BLOCKED) {
+            blocked_tasks = list_append(blocked_tasks, active_task,
+                                        &(active_task->list_state));
+        } else {
+            // Append active task to appropriate ready list
+            ready_tasks[i] = list_append(ready_tasks[i], active_task,
+                                         &(active_task->list_state));
+        }
     }
     // Change the active task
     active_task = new_active;
     active_task->state = TASK_ACTIVE;
+}
+
+/**
+ * This function should ONLY be called by internal routines.
+ * Enables the system tick interrupt.
+ */
+void enable_systick() {
+    uint32_t reload_val;
+    /**
+     * The stm32l433 defaults to sourcing the systick clock as HCLK divided
+     * by 8. We must set the reload value (24 bits) to achieve the desired
+     * systick rate of 5ms
+     */
+    reload_val = (hclk_freq() >> 3) / SYSTICK_FREQ;
+    if (reload_val > SysTick_LOAD_RELOAD_Msk) {
+        LOG_E(TAG, "Oversized systick reload value");
+        exit(ERR_BADPARAM);
+    }
+    // Set the reload value (interrupt fires when counting from 1 to 0)
+    SysTick->LOAD = reload_val - 1;
+    // Enable the systick interrupt
+    SETBITS(SysTick->CTRL, SysTick_CTRL_TICKINT_Msk | SysTick_CTRL_ENABLE_Msk);
+}
+
+/**
+ * Initializes a task stack for use with the scheduler
+ * @param stack_ptr: pointer to start of stack to initialize
+ * @param return_pc: address to set program counter to when task starts (usually
+ * task entry point)
+ * @param arg0: assigned to r0, argument to pass to task entry function
+ * @return new stack pointer after initialization
+ */
+static uint32_t *initialize_task_stack(uint32_t *stack_ptr, void *return_pc,
+                                       void *arg0) {
+    /**
+     * Memory access to stack pointer must be WORD aligned. If pointer is not
+     * word aligned, just loose a few stack bytes until it is.
+     */
+    while ((((uint32_t)stack_ptr) % 4) != 0) {
+        // Move stack pointer by a byte
+        stack_ptr = (uint32_t *)(((uint8_t *)stack_ptr) - 1);
+    }
+    /**
+     * Process stacks are saved with registers in the following order
+     * (from largest to smallest address):
+     * xPSR, ReturnAddress, LR (saved by exception), R12, R3, R2, R1 R0,
+     * LR (saved by context switch), R11, R10, R9, R8, R6, R5, R4
+     */
+    *stack_ptr-- = INITIAL_xPSR; // (xPSR) inital PSR value
+    // Exception will return to task entry
+    *stack_ptr-- = (uint32_t)return_pc; // (ReturnAddress)
+    // Return to task_exithandler if task exits
+    *stack_ptr-- = (uint32_t)task_exithandler; // LR (exception)
+    // Set general purpose registers to dummy values (idea from FreeRTOS)
+    *stack_ptr-- = 0x12121212UL;        // R12
+    *stack_ptr-- = 0x03030303UL;        // R3
+    *stack_ptr-- = 0x02020202UL;        // R2
+    *stack_ptr-- = 0x01010101UL;        // R1
+    *stack_ptr-- = (uint32_t)arg0;      // (R0) Argument for task
+    *stack_ptr-- = INITIAL_EXEC_RETURN; // (LR) EXEC_RETURN value
+    *stack_ptr-- = 0x11111111UL;        // R11
+    *stack_ptr-- = 0x10101010UL;        // R10
+    *stack_ptr-- = 0x09090909UL;        // R9
+    *stack_ptr-- = 0x08080808UL;        // R8
+    *stack_ptr-- = 0x07070707UL;        // R7
+    *stack_ptr-- = 0x06060606UL;        // R6
+    *stack_ptr-- = 0x05050505UL;        // R5
+    *stack_ptr = 0x04040404UL;          // R4 (do not decrement)
+    return stack_ptr;
+}
+
+/**
+ * Handles exit of task
+ */
+static void task_exithandler() {
+    LOG_E(TAG, "Task named '%s' exited", active_task->name);
+    exit(ERR_SCHEDULER);
 }
 
 /**

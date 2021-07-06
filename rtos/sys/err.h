@@ -14,6 +14,7 @@ typedef enum syserr {
     ERR_DEVICE,    /*!< Device Hardware error */
     ERR_TIMEOUT,   /*!< Device or system timeout */
     ERR_NOTINIT,   /*!< Device not initialized */
+    ERR_SCHEDULER, /*!< RTOS scheduler error */
 } syserr_t;
 
 #endif

@@ -61,7 +61,7 @@ static list_t ready_tasks[RTOS_PRIORITY_COUNT] = {NULL};
 static list_t blocked_tasks = NULL;
 
 // Logging tag
-const char *TAG = __FILE__;
+const char *TAG = "task.c";
 
 // Static functions
 static inline void set_pendsv();
@@ -172,27 +172,18 @@ void rtos_start() {
     // Populate remaining idle task configuration
     task->priority = IDLE_TASK_PRIORITY;
     task->name = "Idle Task";
-    task->stack_allocated = false;
-    // Base the task start on the current stack pointer
-    asm volatile(
-        "mrs %[stack_start], msp\n" // save stack pointer into task->stack_start
-        :
-        : [stack_start] "r"(task->stack_start));
-    // Calculate end of the stack
-    task->stack_end = task->stack_start - IDLE_TASK_STACK_SIZE + 1;
     task->entry = idle_entry;
     task->arg = NULL;
     task->blockcause = BLOCK_NONE;
     task->state = TASK_ACTIVE;
-    /* Set this TCB as the new task */
-    new_task = task;
-    /* Trigger an SVCall to populate the stack with saved registers */
-    trigger_svcall();
-    /**
-     * Now we are running in process mode. Note that the svcall will not
-     * change our stack pointer's location, just the register in use. This
-     * means we can simply ignore the top of stack set by the svcall
-     */
+    // Allocate task stack
+    task->stack_end = malloc(IDLE_TASK_STACK_SIZE);
+    if (task->stack_start == NULL) {
+        LOG_E(TAG, "Could not allocate idle task stack");
+        exit(ERR_NOMEM);
+    }
+    task->stack_start = task->stack_end + (IDLE_TASK_STACK_SIZE - 1);
+    task->stack_ptr = task->stack_start;
     // Set this task as the active one
     active_task = task;
     /**
@@ -209,8 +200,25 @@ void rtos_start() {
     SysTick->LOAD = reload_val - 1;
     // Enable the systick interrupt
     SETBITS(SysTick->CTRL, SysTick_CTRL_TICKINT_Msk | SysTick_CTRL_ENABLE_Msk);
-    // Start the idle task
-    task->entry(task->arg);
+    /**
+     * Switch to process stack. To do so, we must set the process stack pointer,
+     * and set the SPSEL bit in the CONTROL register. Once the switch to the
+     * process stack is complete, we will have lost all data on our main stack.
+     * Just break into the idle task entry function
+     */
+    asm volatile(
+        "msr PSP, %[stack_start]\n"
+        "mov r0, #0x2\n"
+        "msr CONTROL, r0\n" // Set control register to 0x2 (SPSEL bit set)
+        "isb\n"             // Ensure the change to process stack pointer occurs
+        "bl idle_entry\n"   // Break into the idle loop
+        // If we get to this instruction, idle loop exited. Switch back to main
+        // stack.
+        "mov r0, #0x0\n"
+        "msr CONTROL, r0\n"
+        "isb\n"
+        :
+        : [ stack_start ] "r"(task->stack_start));
     // If the idle loop returns, log an error
     LOG_E(TAG, "Idle loop returned!");
     exit(ERR_FAIL);
@@ -234,39 +242,34 @@ void task_yield() {
 void task_destroy(task_handle_t task) {}
 
 /**
- * System task creation handler. Saves current processor state into the
- * new_task structure, so that new_task can be resumed from the current point
- * in execution. Also switches the processor to use the process stack. Does
- * not modify the program counter or stack pointer.
+ * System task creation handler
+ * Saves current processor state into the new_task structure, so that new_task
+ * can be resumed from the current point in execution.
  *
  * This function SHOULD NOT BE CALLED BY THE USER. It is indended to run in
  * Handler mode, as the SVCall isr
  */
-void SVCallHandler() {
+__attribute__((naked)) void SVCallHandler() {
     /**
-     * Save the context of the new task
+     * This is a naked function, so that GCC will not generate prologue and
+     * epilogue code, which can leave the stack in an invalid state when
+     * using bx instructions
      */
-    asm volatile(
-        "bkpt\n" // For testing code
-        "tst lr, #0x04\n"
-        "ite eq\n"
-        "mrseq r0, msp\n"        // Load main stack pointer to r0
-        "mrsne r0, psp\n"        // Load process stack pointer to r0
-        "mov r1, r0\n"           // Save current stack pointer
-        "ldr r3, %[new_task] \n" // Load memory location of new task
-        "ldr r2, [r3]\n"         // Load new task struct, to access top of stack
+    /**
+     * Save the context of the new task. Assume we are using psp
+     */
+    asm volatile("bkpt\n"                 // For testing code
+                 "mrs r0, psp\n"          // Load process stack pointer to r0
+                 "mov r1, r0\n"           // Save current stack pointer
+                 "ldr r3, %[new_task] \n" // Load memory location of new task
 
-        "stmfd r0!, {r4-r11, lr}\n" // Save calle-saved registers
-        "str r0, [r2]\n"            // Store the new top of the stack
+                 "stmfd r0!, {r4-r11, lr}\n" // Save calle-saved registers
+                 "str r0, [r3]\n"            // Store the new top of the stack
 
-        "msr psp, r1\n"   // Load r1 as the process stack pointer
-        "orr lr, #0x04\n" // Logical OR sets bit 4 in LR so that processor
-                          // returns to process stack
-
-        "bx lr\n" // Exception return. Core will intercept load of
-                  // 0xFXXXXXXX to PC and return from exception
-        :
-        : [new_task] "m"(new_task));
+                 "bx lr\n" // Exception return. Core will intercept load of
+                           // 0xFXXXXXXX to PC and return from exception
+                 :
+                 : [ new_task ] "m"(new_task));
 }
 
 /**
@@ -276,7 +279,12 @@ void SVCallHandler() {
  * This function SHOULD NOT BE CALLED BY THE USER. It is indended to run in
  * Handler mode, as the PendSV isr
  */
-void PendSVHandler() {
+__attribute__((naked)) void PendSVHandler() {
+    /**
+     * This is a naked function, so that GCC will not generate prologue and
+     * epilogue code, which can leave the stack in an invalid state when
+     * using bx instructions
+     */
     /**
      * Save the context of the currently running task.
      * Assumes task is running with process stack
@@ -307,7 +315,7 @@ void PendSVHandler() {
         "bx lr\n" // Exception return. Core will intercept load of
                   // 0xFXXXXXXX to PC and return from exception
         :
-        : [active_task] "m"(active_task));
+        : [ active_task ] "m"(active_task));
 }
 
 /**
@@ -322,7 +330,7 @@ void SysTickHandler() {
      * TODO: check if preemption should occur (if enabled), and what tasks
      * are runnable
      */
-    asm volatile("bkpt"); // Temporary, for debugging
+    // asm volatile("bkpt"); // Temporary, for debugging
 }
 
 /**
@@ -370,7 +378,7 @@ void select_active_task() {
  */
 static void idle_entry(void *arg) {
     while (1) {
-        LOG_E(TAG, "Idle loop");
+        LOG_D(TAG, "Idle loop");
         delay_ms(200);
     }
 }

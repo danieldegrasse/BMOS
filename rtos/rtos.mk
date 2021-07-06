@@ -56,9 +56,9 @@ OBJ=$(SRCS:%.c=%.o)
 OBJDIR=$(BUILDDIR)/obj
 _OBJ=$(patsubst %,$(OBJDIR)/%,$(OBJ))
 
-# Enable debugging symbols on debug build
-debug: local_CFLAGS+=-g
-debug: $(BUILDDIR)/$(PROG).bin
+# Enable debugging symbols on default build
+all: local_CFLAGS+=-g
+all: $(BUILDDIR)/$(PROG).bin
 
 # Disable system logging and optimize code for release build
 release: local_CFLAGS+=-O2 -DSYSLOG=3
@@ -84,11 +84,17 @@ flash: $(BUILDDIR)/$(PROG).bin
 	$(OPENOCD) -c "program $^ 0x08000000 reset exit"
 
 ## Start debugserver, which flashes the program at boot
-debugserver: $(BUILDDIR)/$(PROG).bin
-	$(OPENOCD) -c "program $^ 0x08000000 reset verify; \
+debugserver: all
+	$(OPENOCD) -c "program $(BUILDDIR)/$(PROG).bin 0x08000000 reset verify; \
 	reset init; gdb_breakpoint_override hard"
 
-.PHONY: clean erase 
+## Start debugger and connect to debugserver
+debug: all
+	$(GDB) -ex 'target extended-remote localhost:3333' \
+	$(BUILDDIR)/$(PROG).elf
+
+
+.PHONY: clean erase
 
 clean:
 	@ if [ -d $(BUILDDIR) ]; then \

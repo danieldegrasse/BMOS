@@ -81,10 +81,15 @@ void rtos_start();
 void PendSVHandler();
 
 /**
- * System task creation handler. Saves current processor state into the
- * new_task structure, so that new_task can be resumed from the current point
- * in execution. Also switches the processor to use the process stack. Does
- * not modify the program counter or stack pointer.
+ * System task creation and rtos startup handler
+ *
+ * When the new_task->stack_ptr is set to a value not equal to 0x0, saves
+ * current processor state into the new_task structure, so that new_task can be
+ * resumed from the current point in execution. Otherwise, this step is not
+ * performed.
+ *
+ * Also always switches the processor to use the process stack. Does not modify
+ * the program counter or stack pointer.
  *
  * This function SHOULD NOT BE CALLED BY THE USER. It is indended to run in
  * Handler mode, as the SVCall isr

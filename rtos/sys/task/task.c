@@ -52,7 +52,7 @@ typedef struct task_status {
     void (*entry)(void *);     /*!< task entry point */
     void *arg;                 /*!< Task argument */
     task_state_t state;        /*!< state of task */
-    const char *name;                /*!< Task name */
+    const char *name;          /*!< Task name */
     bool stack_allocated;      /*!< Was the stack allocated? */
     block_reason_t blockcause; /*!< cause for task block */
     uint32_t priority;         /*!< Task priority */
@@ -216,7 +216,6 @@ __attribute__((naked)) void SVCallHandler() {
      * using bx instructions
      */
     asm volatile(
-        "bkpt\n" // For testing code
         /* Reset the main stack pointer to initial value. */
         "lsr r0, %[VTOR], #0x7\n" // get exception vector address from VTOR
         "ldr r1, [r0]\n"          // load initial stack pointer from vectors
@@ -259,13 +258,12 @@ __attribute__((naked)) void PendSVHandler() {
      * Assumes task is running with process stack
      */
     asm volatile(
-        "bkpt\n"                    // For testing code
-        "mrs r0, psp\n"             // Load process stack pointer to r0
-        "ldr r3, %[active_task] \n" // Load memory location of active task
-        "ldr r2, [r3]\n" // Load active task struct, to access top of stack
+        "mrs r0, psp\n"            // Load process stack pointer to r0
+        "mov r1, %[active_task]\n" // Store memory address of active task
+        "ldr r3, [r1]\n"           // Load value of stack_ptr
 
         "stmfd r0!, {r4-r11, lr}\n" // Save calle-saved registers
-        "str r0, [r2]\n"            // Store the new top of the stack
+        "str r0, [r3]\n"            // Store the new top of the stack
 
         "cpsid i\n"               // Disable interrupts (set PRIMASK to 1)
         "stmfd sp!, {r0-r3}\n"    // Save caller saved regs to main stack
@@ -273,16 +271,16 @@ __attribute__((naked)) void PendSVHandler() {
         "ldmfd sp!, {r0-r3}\n"    // Restore registers after function call
         "cpsie i\n"               // Reenable interrupt
 
-        "ldr r2, [r3]\n" // Reload data stored in active_task
-        "ldr r0, [r2]\n" // Load the address of the top of task stack
+        "ldr r3, [r1]\n" // Reload address of active task
+        "ldr r2, [r3]\n" // Reload stack_ptr from active_task
 
-        "ldmfd r0!, {r4-r11, lr}\n" // Restore calle-saved registers for task
-        "msr psp, r0\n"             // Load r0 as the stack pointer
+        "ldmfd r2!, {r4-r11, lr}\n" // Restore calle-saved registers for task
+        "msr psp, r2\n"             // Load r2 as the stack pointer
 
         "bx lr\n" // Exception return. Core will intercept load of
                   // 0xFXXXXXXX to PC and return from exception
         :
-        : [ active_task ] "m"(active_task));
+        : [ active_task ] "r"(&active_task));
 }
 
 /**
@@ -426,6 +424,7 @@ static void idle_entry(void *arg) {
     while (1) {
         LOG_D(TAG, "Idle loop");
         delay_ms(200);
+        task_yield();
     }
 }
 

@@ -570,7 +570,7 @@ static void idle_entry(void *arg) {
         while (exited_tasks != NULL) {
             task = list_get_head(exited_tasks);
             exited_tasks = list_remove(exited_tasks, &(task->list_state));
-            LOG_MIN(SYSLOGLEVEL_DEBUG, TAG, "Reaping task\n");
+            LOG_MIN(SYSLOGLEVEL_DEBUG, TAG, "Reaping task");
             // Free task and task stack
             if (task->stack_allocated) {
                 free(task->stack_end);

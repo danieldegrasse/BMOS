@@ -5,8 +5,8 @@
  */
 #include <stdarg.h>
 #include <stdio.h>
-#include <unistd.h>
 #include <string.h>
+#include <unistd.h>
 
 #include <config.h>
 
@@ -137,6 +137,8 @@ void LOG_MIN(int log_level, const char *tag, const char *logstr) {
         }
         // Log logging string
         write(STDOUT_FILENO, logstr, strlen(logstr));
+        // Write newline
+        write(STDOUT_FILENO, "\n", 1);
     }
 }
 

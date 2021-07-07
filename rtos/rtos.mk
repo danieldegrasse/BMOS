@@ -36,7 +36,7 @@ BUILDDIR=build
 
 # Excluded build paths. Should not have a trailing slash.
 # Any files in these directories will not be built
-EXCLUDED_DIRS=$(RTOS)/drivers/test $(RTOS)/util/test
+EXCLUDED_DIRS=$(RTOS)/drivers/test $(RTOS)/util/test $(RTOS)/sys/test
 
 ###### recursive wildcard function #######
 rwildcard=$(wildcard $1$2) $(foreach d, \

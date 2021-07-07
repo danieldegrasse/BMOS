@@ -579,6 +579,8 @@ static void idle_entry(void *arg) {
         }
         // Flush logging output
         fsync(STDOUT_FILENO);
+        // Wait for an interrupt to fire
+        asm volatile("wfi\n");
         // Yield to another task
         task_yield();
     }

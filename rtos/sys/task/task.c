@@ -6,6 +6,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 #include <config.h>
 #include <drivers/clock/clock.h>
@@ -29,6 +30,7 @@
  */
 typedef enum task_state {
     TASK_EXITED,  /*!< Task exited */
+    TASK_DELAYED, /*!< Task blocked due to delay */
     TASK_BLOCKED, /*!< Task blocked and cannot run */
     TASK_READY,   /*!< Task is ready but not running */
     TASK_ACTIVE,  /*!< Task is running */
@@ -38,24 +40,25 @@ typedef enum task_state {
  * Task control block. Keeps task status and recordkeeping information.
  */
 typedef struct task_status {
-    uint32_t *stack_ptr;       /*!< Task stack pointer. MUST be first entry*/
-    char *stack_start;         /*!< Task stack start */
-    char *stack_end;           /*!< End of task stack */
-    void (*entry)(void *);     /*!< task entry point */
-    void *arg;                 /*!< Task argument */
-    task_state_t state;        /*!< state of task */
-    const char *name;          /*!< Task name */
-    bool stack_allocated;      /*!< Was the stack allocated? */
-    block_reason_t blockcause; /*!< cause for task block */
-    uint32_t priority;         /*!< Task priority */
-    list_state_t list_state;   /*!< Task list state */
+    uint32_t *stack_ptr;     /*!< Task stack pointer. MUST be first entry*/
+    char *stack_start;       /*!< Task stack start */
+    char *stack_end;         /*!< End of task stack */
+    void (*entry)(void *);   /*!< task entry point */
+    void *arg;               /*!< Task argument */
+    task_state_t state;      /*!< state of task */
+    const char *name;        /*!< Task name */
+    bool stack_allocated;    /*!< Was the stack allocated? */
+    int blockstate;          /*!< cause for task block (or delay value) */
+    uint32_t priority;       /*!< Task priority */
+    list_state_t list_state; /*!< Task list state */
 } task_status_t;
 
 // Task control block lists
-static task_status_t *active_task = NULL;
-static list_t ready_tasks[RTOS_PRIORITY_COUNT] = {NULL};
-static list_t blocked_tasks = NULL;
-static list_t exited_tasks = NULL;
+static task_status_t *active_task = NULL;                // Running task
+static list_t ready_tasks[RTOS_PRIORITY_COUNT] = {NULL}; // Tasks ready to run
+static list_t delayed_tasks = NULL; // Tasks delayed by task_delay
+static list_t blocked_tasks = NULL; // Tasks blocked by system
+static list_t exited_tasks = NULL;  // Exited tasks waiting to be reaped
 
 // Logging tag
 const char *TAG = "task.c";
@@ -68,6 +71,8 @@ static inline void trigger_svcall();
 static void idle_entry(void *arg);
 static uint32_t *initialize_task_stack(uint32_t *stack_ptr, void *return_pc,
                                        void *arg0);
+static inline list_return_t decrement_task_delay(void *taskptr);
+static inline list_return_t find_first_zero_delay(void *taskptr);
 static void task_exithandler();
 
 /**
@@ -131,7 +136,7 @@ task_handle_t task_create(void (*entry)(void *), void *arg,
         task->priority = cfg->task_priority;
     }
     // Update task state and place in ready queue
-    task->blockcause = BLOCK_NONE;
+    task->blockstate = BLOCK_NONE;
     task->state = TASK_READY;
     task->entry = entry;
     task->arg = arg;
@@ -183,9 +188,29 @@ void rtos_start() {
  * task, and yield execution to the highest priority task able to run
  */
 void task_yield() {
+    if (!active_task) {
+        return;
+    }
     // Mark task as ready, not active
     active_task->state = TASK_READY;
     // Trigger a system context switch switch by setting pendsv bit
+    set_pendsv();
+}
+
+/**
+ * Blocks a task for at least 'delay' milliseconds.
+ * Task will transition out of blocked state after 'delay' milliseconds,
+ * but preemption setting and priority will determine when it runs again
+ * @param delay: number of milliseconds to delay for
+ */
+void task_delay(uint32_t delay) {
+    if (!active_task) {
+        return;
+    }
+    // Assign delay value to task blockstate field
+    active_task->blockstate = delay;
+    active_task->state = TASK_DELAYED;
+    // Trigger a context switch
     set_pendsv();
 }
 
@@ -236,12 +261,15 @@ task_handle_t get_active_task() { return (task_handle_t)active_task; }
  * @param reason: reason for task block
  */
 void block_active_task(block_reason_t reason) {
+    if (!active_task) {
+        return;
+    }
     /**
      * Set block reason of task, and fire context switch. Context switch handler
      * will move task to correct list.
      */
     active_task->state = TASK_BLOCKED;
-    active_task->blockcause = reason;
+    active_task->blockstate = reason;
     set_pendsv();
 }
 
@@ -255,15 +283,19 @@ void block_active_task(block_reason_t reason) {
  */
 void unblock_task(task_handle_t task, block_reason_t reason) {
     task_status_t *tsk = (task_status_t *)task;
+    // Check paramters
+    if (task == NULL) {
+        return;
+    }
     /**
      * Ensure task block reason matches provided reason
      */
-    if (tsk->state != TASK_BLOCKED || tsk->blockcause != reason) {
+    if (tsk->state != TASK_BLOCKED || tsk->blockstate != reason) {
         return;
     }
     // Set task as ready
     tsk->state = TASK_READY;
-    tsk->blockcause = BLOCK_NONE;
+    tsk->blockstate = BLOCK_NONE;
     // Move task to ready list
     blocked_tasks = list_remove(blocked_tasks, &(tsk->list_state));
     ready_tasks[tsk->priority] =
@@ -363,7 +395,35 @@ void SysTickHandler() {
      * TODO: check if preemption should occur (if enabled), and what tasks
      * are runnable
      */
-    // asm volatile("bkpt"); // Temporary, for debugging
+    task_status_t *ready_task;
+    // Decrement the delay value for each task
+    list_iterate(delayed_tasks, decrement_task_delay);
+    // While tasks with a zero delay exist, unblock them
+    while (1) {
+        ready_task =
+            (task_status_t *)list_iterate(delayed_tasks, find_first_zero_delay);
+        if (ready_task == (task_status_t *)list_get_tail(delayed_tasks) &&
+            (ready_task == NULL || ready_task->blockstate != 0)) {
+            break; // No more zero delay tasks exist
+        }
+        // Unblock task
+        delayed_tasks = list_remove(delayed_tasks, &(ready_task->list_state));
+        ready_tasks[ready_task->priority] =
+            list_append(ready_tasks[ready_task->priority], ready_task,
+                        &(ready_task->list_state));
+    }
+#if SYS_USE_PREEMPTION == PREEMPTION_ENABLED
+    /** Check if preemption should occur **/
+    int i = RTOS_PRIORITY_COUNT - 1;
+    // Check to see if a higher priority task is ready
+    while (ready_tasks[i] == NULL && i > active_task->priority) {
+        i--;
+    }
+    if (i > active_task->priority) {
+        // A higher priority task is ready. Run it.
+        task_yield();
+    }
+#endif
 }
 
 /**
@@ -371,7 +431,7 @@ void SysTickHandler() {
  * Selects new active task from all the tasks in ready lists. Selects the
  * highest priority task available to run.
  * Does not update active task state, but will refer to task state when
- * placing it into blocked/ready list. Does update active task state.
+ * placing it into blocked/delayed/ready list. Does update active task state.
  */
 void select_active_task() {
     int i;
@@ -397,11 +457,15 @@ void select_active_task() {
     ready_tasks[i] = list_remove(ready_tasks[i], &(new_active->list_state));
     if (active_task != NULL) { // active task will be null on scheduler start
         /**
-         * Based on the block state of the active task, store it in a blocked
-         * list or the ready list
+         * Based on the block state of the active task, store it in the blocked,
+         * delayed, or ready list
          */
         if (active_task->state == TASK_BLOCKED) {
             blocked_tasks = list_append(blocked_tasks, active_task,
+                                        &(active_task->list_state));
+        } else if (active_task->state == TASK_DELAYED) {
+            // Append task to delayed list
+            delayed_tasks = list_append(delayed_tasks, active_task,
                                         &(active_task->list_state));
         } else {
             // Append active task to appropriate ready list
@@ -498,24 +562,44 @@ static void task_exithandler() {
  */
 static void idle_entry(void *arg) {
     task_status_t *task;
+    /* Idle task should never exit */
     while (1) {
-        LOG_MIN(SYSLOGLEVEL_DEBUG, TAG, "Idle loop");
         /**
          * Reap resources of exited tasks
          */
         while (exited_tasks != NULL) {
             task = list_get_head(exited_tasks);
             exited_tasks = list_remove(exited_tasks, &(task->list_state));
-            LOG_MIN(SYSLOGLEVEL_DEBUG, TAG, "Reaping task");
+            LOG_MIN(SYSLOGLEVEL_DEBUG, TAG, "Reaping task\n");
             // Free task and task stack
             if (task->stack_allocated) {
                 free(task->stack_end);
             }
             free(task);
         }
+        // Flush logging output
+        fsync(STDOUT_FILENO);
         // Yield to another task
         task_yield();
     }
+}
+
+/**
+ * Used by the system tick handler to decrement task delay counts
+ */
+static inline list_return_t decrement_task_delay(void *taskptr) {
+    task_status_t *task = (task_status_t *)taskptr;
+    task->blockstate--;
+    return LST_CONT;
+}
+
+/**
+ * Used by system tick handler to find the first task with a zero delay
+ */
+static inline list_return_t find_first_zero_delay(void *taskptr) {
+    task_status_t *task = (task_status_t *)taskptr;
+    // Break if task has zero delay
+    return task->blockstate == 0 ? LST_BRK : LST_CONT;
 }
 
 /**

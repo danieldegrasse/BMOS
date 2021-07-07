@@ -36,6 +36,10 @@
 /** system logging is disabled */
 #define SYSLOG_DISABLED 3
 
+/** System preemption options */
+#define PREEMPTION_DISABLED 0 // Tasks cannot be preempted
+#define PREEMPTION_ENABLED 1  // Higher priority tasks will preempt
+
 /**
  * System log levels
  */
@@ -85,5 +89,20 @@
 #define SYSLOGBUFSIZE 512
 #endif
 
+/**
+ * System preemption setting. If enabled, higher priority tasks will preempt
+ * lower priority ones. In effect the highest priority task that is ready to run
+ * will always be running. Note that equal priority tasks will NOT preempt each
+ * other.
+ *
+ * Note if preemption is disabled, low priority tasks can easily use the cpu
+ * without yielding and cause priority inversion. Without preemption, the
+ * scheduler will only use task priority when selecting the next running task
+ * to run.
+ * Set by passing -DSYS_USE_PREEMPTION=val
+ */
+#ifndef SYS_USE_PREEMPTION
+#define SYS_USE_PREEMPTION PREEMPTION_ENABLED
+#endif
 
 #endif

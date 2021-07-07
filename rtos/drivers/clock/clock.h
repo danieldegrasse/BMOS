@@ -154,9 +154,10 @@ uint64_t hsi_freq();
 /**
  * Delays the system by a given number of milliseconds.
  * This function simply spins the processor during this delay
+ * If possible, use task_delay() instead of this function
  * @param delay: length to delay in ms
  */
-void delay_ms(uint32_t delay);
+void blocking_delay_ms(uint32_t delay);
 
 /**
  * Resets all system clocks to known good values.

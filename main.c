@@ -35,16 +35,21 @@ static void rtos_task1(void *unused) {
     task_config_t t3cfg = DEFAULT_TASK_CONFIG;
     task_config_t t4cfg = DEFAULT_TASK_CONFIG;
     const char *TAG = "Rtos_Task1";
-    LOG_D(TAG, "Task 1 starting");
+    LOG_D(TAG, "Task 1: Create task 3 and 4. Starting");
     // Create task 3
     t3cfg.task_stacksize = 2048;
     t3cfg.task_stack = t3stack;
     t3cfg.task_name = "Task3";
+    LOG_D(TAG, "Task 1 creating task 3");
     task3 = task_create(rtos_task3, NULL, &t3cfg);
     if (task3 == NULL) {
         LOG_E(TAG, "Could not create task 3");
     }
+    // Delay, then create task 4. This task will kill task 3
+    task_delay(1000);
+    LOG_D(TAG, "Task 1 running. Will create task 4");
     t4cfg.task_name = "Task4";
+    t4cfg.task_priority = DEFAULT_PRIORITY + 1;
     if (task_create(rtos_task4, task3, &t4cfg) == NULL) {
         LOG_E(TAG, "Could not create task 4");
     }
@@ -60,10 +65,11 @@ static void rtos_task2(void *arg) {
     const char *TAG = "Rtos_Task2";
     int i = 20;
     LOG_D(TAG, "Task 2 starting. Argument %s", (char *)arg);
+    LOG_D(TAG, "Task 2 will yield, and will exit independently");
     while (i) {
-        delay_ms(500);
         LOG_D(TAG, "Task 2 running");
         i--;
+        task_delay(500);
         if (i % 5 == 0) {
             // Should yield a total of 4 times
             LOG_D(TAG, "Task 2 yielding");
@@ -75,16 +81,17 @@ static void rtos_task2(void *arg) {
 }
 
 /**
- * Task 3 entry point. Will run without exiting. However, task 4 will destroy
- * it, so the task should exit at one of the periodic yield points.
+ * Task 3 entry point. Will attempt to monopolize CPU time. Task 4 should
+ * preempt and destroy it if preemption is enabled
  * @param unused: unused
  */
 static void rtos_task3(void *unused) {
     const char *TAG = "Rtos_Task3";
+    LOG_D(TAG, "Task 3: Holding CPU time");
     while (1) {
-        delay_ms(500);
-        LOG_D(TAG, "Task 3 yielding");
-        task_yield();
+        // Delay_ms does NOT yield
+        blocking_delay_ms(500);
+        LOG_D(TAG, "Task 3 running");
     }
 }
 
@@ -94,7 +101,8 @@ static void rtos_task3(void *unused) {
  */
 static void rtos_task4(void *arg) {
     const char *TAG = "Rtos_Task4";
-    delay_ms(2000);
+    LOG_D(TAG, "Task 4 starting. Dropping into delay, then killing task 3");
+    task_delay(2000);
     LOG_D(TAG, "Task 4 destroying task 3");
     task_destroy((task_handle_t)arg);
     LOG_D(TAG, "Task 4 exiting");

@@ -101,21 +101,21 @@ list_t list_remove(list_t list, list_state_t *target) {
 /**
  * Gets the head of a list without removing it
  * @param list: list to get head of
- * @return pointer to head element of list
+ * @return pointer to head element of list, or NULL for empty list
  */
 void *list_get_head(list_t list) {
     // Simply return data in list head
-    return ((list_state_t *)list)->_container;
+    return list == NULL ? list : ((list_state_t *)list)->_container;
 }
 
 /**
  * Gets the tail of a list without removing it
  * @param list: list to get tail of
- * @return pointer to tail element of list
+ * @return pointer to tail element of list, or NULL for empty list
  */
 void *list_get_tail(list_t list) {
     // Get the tail from the prev ref of the head, return its data
-    return ((list_state_t *)list)->_prev->_container;
+    return list == NULL ? list : ((list_state_t *)list)->_prev->_container;
 }
 
 /**

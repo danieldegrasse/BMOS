@@ -196,7 +196,7 @@ int UART_read(UART_handle_t handle, uint8_t *buf, uint32_t len, syserr_t *err) {
             // If the timeout is infinite, spin here until there is data to read
             if (timeout != UART_TIMEOUT_INF) {
                 // Decrement timeout
-                delay_ms(200);
+                blocking_delay_ms(200);
                 timeout -= 200;
                 if (timeout - 200 < UART_TIMEOUT_NONE) {
                     // Just set timeout to NONE (defined to be zero)
@@ -266,7 +266,7 @@ int UART_write(UART_handle_t handle, uint8_t *buf, uint32_t len,
             // If the timeout is set to infinity, we should just spin here
             if (timeout != UART_TIMEOUT_INF) {
                 // Decrement the timeout
-                delay_ms(1);
+                blocking_delay_ms(1);
                 timeout--;
             }
         }
@@ -284,7 +284,7 @@ int UART_write(UART_handle_t handle, uint8_t *buf, uint32_t len,
      */
     while (uart->tx_active && timeout != UART_TIMEOUT_NONE) {
         if (timeout != UART_TIMEOUT_INF) {
-            delay_ms(200);
+            blocking_delay_ms(200);
             if (timeout - 200 < UART_TIMEOUT_NONE) {
                 // Just set timeout to NONE (defined to be zero)
                 timeout = UART_TIMEOUT_NONE;

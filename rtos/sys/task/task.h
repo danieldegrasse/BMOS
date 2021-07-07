@@ -6,12 +6,13 @@
 #ifndef TASK_H
 #define TASK_H
 
-#include <sys/err.h>
+#include <limits.h>
 #include <stdint.h>
+#include <sys/err.h>
 
 #define DEFAULT_STACKSIZE 2048
-#define DEFAULT_PRIORITY 5
-#define RTOS_PRIORITY_COUNT 7 // 7 independent priority levels
+#define DEFAULT_PRIORITY 4
+#define RTOS_PRIORITY_COUNT 8 // 8 independent priority levels
 #define IDLE_TASK_PRIORITY 0
 #define IDLE_TASK_STACK_SIZE 1024
 #define SYSTICK_FREQ 1000 // Every 1ms (1000Hz)
@@ -48,6 +49,14 @@ task_handle_t task_create(void (*entry)(void *), void *arg, task_config_t *cfg);
 void task_yield();
 
 /**
+ * Blocks a task for at least 'delay' milliseconds.
+ * Task will transition out of blocked state after 'delay' milliseconds,
+ * but preemption setting and priority will determine when it runs again
+ * @param delay: number of milliseconds to delay for
+ */
+void task_delay(uint32_t delay);
+
+/**
  * Destroys a task. Will stop task execution immediately.
  * @param task: Task handle to destroy
  */
@@ -75,10 +84,11 @@ void rtos_start();
 
 /**
  * Task block reason. Not intended for user use, used by system drivers.
+ * Note that none of these enum values should be positive.
  */
 typedef enum block_reason {
-    BLOCK_NONE,      /*!< Task is not blocked */
-    BLOCK_SEMAPHORE, /*!< Task is blocked due to sempahore pend */
+    BLOCK_SEMAPHORE = INT_MIN, /*!< Task is blocked due to sempahore pend */
+    BLOCK_NONE = 0,            /*!< Task is not blocked */
 } block_reason_t;
 
 /**

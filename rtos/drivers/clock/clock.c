@@ -6,7 +6,6 @@
 #include <stdlib.h>
 
 #include <drivers/device/device.h>
-#include <drivers/swo/swo.h>
 #include <util/bitmask.h>
 
 #include "clock.h"
@@ -320,9 +319,10 @@ uint64_t hclk_freq() { return apb_freq; }
 /**
  * Delays the system by a given number of milliseconds.
  * This function simply spins the processor during this delay
+ * If possible, use task_delay() instead of this function
  * @param delay: length to delay in ms
  */
-void delay_ms(uint32_t delay) {
+void blocking_delay_ms(uint32_t delay) {
     /**
      * Approximate the delay by simply subtractring from a counter.
      * All instructions here should take 1 clock cycle

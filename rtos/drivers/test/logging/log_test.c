@@ -67,7 +67,7 @@ static syserr_t test2_forcedflush() {
     if (fsync(STDOUT_FILENO) != 0) {
         return ERR_FAIL;
     }
-    delay_ms(2000);
+    blocking_delay_ms(2000);
     ret = printf("This is the second string\n");
     if (ret != 26) {
         return ERR_FAIL;

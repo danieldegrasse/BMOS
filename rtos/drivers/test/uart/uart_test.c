@@ -159,7 +159,7 @@ int main() {
     }
     // Flush the read buffer
     UART_read(lpuart, buf, READBUF_LEN, &err);
-    delay_ms(5000); // To give user time to see message
+    blocking_delay_ms(5000); // To give user time to see message
     len = UART_read(lpuart, buf, READBUF_LEN, &err);
     if (len != 0) {
         while (1)
@@ -180,7 +180,7 @@ int main() {
             ; // spin
     }
     // delay for a few ms, so the UART tx can end
-    delay_ms(100);
+    blocking_delay_ms(100);
     // Close the UART and reopen it with echo enabled.
     if (UART_close(lpuart) != SYS_OK) {
         while (1)

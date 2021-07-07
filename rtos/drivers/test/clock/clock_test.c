@@ -91,10 +91,10 @@ int main() {
     while (cycles--) {
         // Turn on user LED
         GPIO_write(GPIO_PORT_B, GPIO_PIN_13, GPIO_HIGH);
-        delay_ms(1000);
+        blocking_delay_ms(1000);
         // Turn off user LED
         GPIO_write(GPIO_PORT_B, GPIO_PIN_13, GPIO_LOW);
-        delay_ms(1000);
+        blocking_delay_ms(1000);
     }
     /**
      * Verify function failures
@@ -145,10 +145,10 @@ int main() {
     while (cycles--) {
         // Turn on user LED
         GPIO_write(GPIO_PORT_B, GPIO_PIN_13, GPIO_HIGH);
-        delay_ms(10000);
+        blocking_delay_ms(10000);
         // Turn off user LED
         GPIO_write(GPIO_PORT_B, GPIO_PIN_13, GPIO_LOW);
-        delay_ms(10000);
+        blocking_delay_ms(10000);
     }
     while (1)
         ; // Spin

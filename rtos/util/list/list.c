@@ -134,9 +134,6 @@ static list_t list_add(list_t list, void *elem, list_state_t *state,
     if (state == NULL || elem == NULL) {
         return NULL;
     }
-    if (state->_next != NULL || state->_prev != NULL) {
-        LOG_D(__FILE__, "List state not null, is an entry being reused?");
-    }
     // Associate the element with the container field of state
     state->_container = elem;
     if (list == NULL) {

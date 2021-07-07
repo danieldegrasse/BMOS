@@ -8,6 +8,7 @@ CC=$(TOOLCHAIN_ROOT)/bin/arm-none-eabi-gcc
 LD=$(TOOLCHAIN_ROOT)/bin/arm-none-eabi-ld
 OBJCOPY=$(TOOLCHAIN_ROOT)/bin/arm-none-eabi-objcopy
 GDB=$(TOOLCHAIN_ROOT)/bin/arm-none-eabi-gdb
+SIZE=$(TOOLCHAIN_ROOT)/bin/arm-none-eabi-size
 
 # Debugger command (Must be set by user)
 ## OPENOCD=openocd -f /usr/share/openocd/scripts/board/stm32l4discovery.cfg
@@ -24,6 +25,7 @@ local_CFLAGS += -mcpu=cortex-m4 \
 	-ffreestanding \
 	-isystem $(RTOS) \
 	-nostartfiles\
+	--specs=nano.specs \
 	$(CFLAGS)
 local_LDFLAGS += -Wl,-T $(RTOS)/linker_script.ld \
 	-Wl,-Map=$(BUILDDIR)/$(PROG).map \
@@ -78,6 +80,8 @@ $(BUILDDIR)/$(PROG).bin: $(BUILDDIR)/$(PROG).elf
 $(BUILDDIR)/$(PROG).elf: $(_OBJ)
 	@ echo "Linking $@"
 	@ $(CC) -o $@ $^ $(local_CFLAGS) $(local_LDFLAGS)
+	@ echo "Code sizes for $@:"
+	$(SIZE) -G $@
 
 ##### Flash code to board using OpenOCD (0x08000000 is start of flash bank)
 flash: $(BUILDDIR)/$(PROG).bin

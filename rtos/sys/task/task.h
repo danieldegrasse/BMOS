@@ -7,12 +7,13 @@
 #define TASK_H
 
 #include <sys/err.h>
+#include <stdint.h>
 
 #define DEFAULT_STACKSIZE 2048
 #define DEFAULT_PRIORITY 5
 #define RTOS_PRIORITY_COUNT 7 // 7 independent priority levels
 #define IDLE_TASK_PRIORITY 0
-#define IDLE_TASK_STACK_SIZE 512
+#define IDLE_TASK_STACK_SIZE 1024
 #define SYSTICK_FREQ 1000 // Every 1ms (1000Hz)
 
 typedef void *task_handle_t;
@@ -25,7 +26,7 @@ typedef struct task_config {
     int task_stacksize; /*!< Desired size of task stack. If stack is provided
                            set this to size of task stack*/
     uint32_t task_priority; /*!< Task priority */
-    const char *task_name;        /*< Optional task name */
+    const char *task_name;  /*< Optional task name */
 } task_config_t;
 
 /**
@@ -71,6 +72,37 @@ void rtos_start();
     }
 
 /** ------------------------ End user functions ---------------------------- */
+
+/**
+ * Task block reason. Not intended for user use, used by system drivers.
+ */
+typedef enum block_reason {
+    BLOCK_NONE,      /*!< Task is not blocked */
+    BLOCK_SEMAPHORE, /*!< Task is blocked due to sempahore pend */
+} block_reason_t;
+
+/**
+ * Gets the active task. Used by system drivers
+ * @return handle to active task
+ */
+task_handle_t get_active_task();
+
+/**
+ * Blocks the running task, and switches to a new runnable one. This function
+ * does not return. Used by system drivers.
+ * @param reason: reason for task block
+ */
+void block_active_task(block_reason_t reason);
+
+/**
+ * Unblocks a task. Caller must give correct reason task was blocked. If
+ * reason is incorrect, this call has no effect. Used by system drivers.
+ * Task will not run immediately unless it has higher priority than running task
+ * and preemption is enabled.
+ * @param task: task to unblock
+ * @param reason: reason task was blocked.
+ */
+void unblock_task(task_handle_t task, block_reason_t reason);
 
 /**
  * System context switch handler. Stores core registers for current

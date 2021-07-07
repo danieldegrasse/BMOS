@@ -1,3 +1,8 @@
+/**
+ * @file task_test.c
+ * Test RTOS task creation, switching, and destruction
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,6 +12,13 @@
 #include <sys/task/task.h>
 #include <util/logging/logging.h>
 
+static void rtos_task1(void *unused);
+static void rtos_task2(void *arg);
+static void rtos_task3(void *unused);
+static void rtos_task4(void *unused);
+static char t3stack[2048];
+static task_handle_t task3;
+
 /**
  * Initializes system
  */
@@ -15,35 +27,110 @@ static void system_init() {
     clock_init(&clk_cfg);
 }
 
+/**
+ * Task 1 entry point. Creates tasks and exits.
+ * @param unused: Unused arg
+ */
 static void rtos_task1(void *unused) {
+    task_config_t t3cfg = DEFAULT_TASK_CONFIG;
+    task_config_t t4cfg = DEFAULT_TASK_CONFIG;
     const char *TAG = "Rtos_Task1";
-    int i = 10;
     LOG_D(TAG, "Task 1 starting");
-    while (1) {
+    // Create task 3
+    t3cfg.task_stacksize = 2048;
+    t3cfg.task_stack = t3stack;
+    t3cfg.task_name = "Task3";
+    task3 = task_create(rtos_task3, NULL, &t3cfg);
+    if (task3 == NULL) {
+        LOG_E(TAG, "Could not create task 3");
+    }
+    t4cfg.task_name = "Task4";
+    if (task_create(rtos_task4, task3, &t4cfg) == NULL) {
+        LOG_E(TAG, "Could not create task 4");
+    }
+    return;
+}
+
+/**
+ * Task 2 entry point. Will run, and periodically yield execution.
+ * The task will exit of its own accord
+ * @param arg: String passed at task creation
+ */
+static void rtos_task2(void *arg) {
+    const char *TAG = "Rtos_Task2";
+    int i = 20;
+    LOG_D(TAG, "Task 2 starting. Argument %s", (char *)arg);
+    while (i) {
         delay_ms(500);
-        LOG_D(TAG, "Task 1 running");
+        LOG_D(TAG, "Task 2 running");
         i--;
-        if (i == 0) {
-            LOG_D(TAG, "Task 1 yielding");
-            i = 10;
+        if (i % 5 == 0) {
+            // Should yield a total of 4 times
+            LOG_D(TAG, "Task 2 yielding");
             task_yield();
         }
+    }
+    // Task runtime has expired. Exit.
+    return;
+}
+
+/**
+ * Task 3 entry point. Will run without exiting. However, task 4 will destroy
+ * it, so the task should exit at one of the periodic yield points.
+ * @param unused: unused
+ */
+static void rtos_task3(void *unused) {
+    const char *TAG = "Rtos_Task3";
+    while (1) {
+        delay_ms(500);
+        LOG_D(TAG, "Task 3 yielding");
+        task_yield();
     }
 }
 
 /**
- * Base RTOS testing point
+ * Task 4 entry point. Will delay, then destroy task 3
+ * @param arg: Task 3 handle
+ */
+static void rtos_task4(void *arg) {
+    const char *TAG = "Rtos_Task4";
+    delay_ms(2000);
+    LOG_D(TAG, "Task 4 destroying task 3");
+    task_destroy((task_handle_t)arg);
+    LOG_D(TAG, "Task 4 exiting");
+}
+
+/**
+ * Testing entry point. Tests task creation, switching, and destruction
  */
 int main() {
     task_handle_t task1;
     task_config_t task1cfg = DEFAULT_TASK_CONFIG;
+    task_handle_t task2;
+    task_config_t task2cfg = DEFAULT_TASK_CONFIG;
+    char *arg = "Hello";
 
     system_init();
 
+    /**
+     * Task 1 has a high priority and spawns task 3 and 4
+     */
     task1cfg.task_name = "Task1";
+    task1cfg.task_priority = DEFAULT_PRIORITY + 1;
     task1 = task_create(rtos_task1, NULL, &task1cfg);
     if (!task1) {
         LOG_E(__FILE__, "Failed to create task 1\n");
+        return ERR_FAIL;
+    }
+    /**
+     * Task 2 has a default priority and will exit of its own accord
+     * It also will periodically yield to allow another task to run.
+     */
+    task2cfg.task_name = "Task2";
+    task2cfg.task_priority = DEFAULT_PRIORITY;
+    task2 = task_create(rtos_task2, arg, &task2cfg);
+    if (!task2) {
+        LOG_E(__FILE__, "Failed to create task 2\n");
         return ERR_FAIL;
     }
     LOG_D(__FILE__, "Starting RTOS");

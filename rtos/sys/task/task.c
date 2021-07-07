@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#include <config.h>
 #include <drivers/clock/clock.h>
 #include <drivers/device/device.h>
 #include <sys/err.h>
@@ -34,15 +35,6 @@ typedef enum task_state {
 } task_state_t;
 
 /**
- * Task block reason
- */
-typedef enum block_reason {
-    BLOCK_NONE,      /*!< Task is not blocked */
-    BLOCK_SEMAPHORE, /*!< Task is blocked due to sempahore pend */
-    BLOCK_TIMER,     /*!< Task is blocked due to timer */
-} block_reason_t;
-
-/**
  * Task control block. Keeps task status and recordkeeping information.
  */
 typedef struct task_status {
@@ -63,6 +55,7 @@ typedef struct task_status {
 static task_status_t *active_task = NULL;
 static list_t ready_tasks[RTOS_PRIORITY_COUNT] = {NULL};
 static list_t blocked_tasks = NULL;
+static list_t exited_tasks = NULL;
 
 // Logging tag
 const char *TAG = "task.c";
@@ -200,7 +193,82 @@ void task_yield() {
  * Destroys a task. Will stop task execution immediately.
  * @param task: Task handle to destroy
  */
-void task_destroy(task_handle_t task) {}
+void task_destroy(task_handle_t task) {
+    task_status_t *tsk = (task_status_t *)task;
+    // Check if the task handle is the active one
+    if (tsk == active_task) {
+        /**
+         * We cannot free this task. Instead, place it in exited task list.
+         * idle task will reap resources.
+         */
+        exited_tasks = list_append(exited_tasks, tsk, &(tsk->list_state));
+        active_task = NULL;
+        // Trigger an SVCall to switch to a new active task (not context switch)
+        trigger_svcall();
+    } else {
+        // Remove task from list it is in
+        if (tsk->state == TASK_BLOCKED) {
+            blocked_tasks = list_remove(blocked_tasks, &(tsk->list_state));
+        } else if (tsk->state == TASK_READY) {
+            ready_tasks[tsk->priority] =
+                list_remove(ready_tasks[tsk->priority], &(tsk->list_state));
+        } else {
+            LOG_W(TAG,
+                  "Inactive destroyed task is not in blocked or ready list");
+        }
+        // Free resources of active task
+        if (tsk->stack_allocated) {
+            free(tsk->stack_end);
+        }
+        free(tsk);
+    }
+}
+
+/**
+ * Gets the active task. Used by system drivers
+ * @return handle to active task
+ */
+task_handle_t get_active_task() { return (task_handle_t)active_task; }
+
+/**
+ * Blocks the running task, and switches to a new runnable one. This function
+ * does not return. Used by system drivers.
+ * @param reason: reason for task block
+ */
+void block_active_task(block_reason_t reason) {
+    /**
+     * Set block reason of task, and fire context switch. Context switch handler
+     * will move task to correct list.
+     */
+    active_task->state = TASK_BLOCKED;
+    active_task->blockcause = reason;
+    set_pendsv();
+}
+
+/**
+ * Unblocks a task. Caller must give correct reason task was blocked. If
+ * reason is incorrect, this call has no effect. Used by system drivers.
+ * Task will not run immediately unless it has higher priority than running task
+ * and preemption is enabled.
+ * @param task: task to unblock
+ * @param reason: reason task was blocked.
+ */
+void unblock_task(task_handle_t task, block_reason_t reason) {
+    task_status_t *tsk = (task_status_t *)task;
+    /**
+     * Ensure task block reason matches provided reason
+     */
+    if (tsk->state != TASK_BLOCKED || tsk->blockcause != reason) {
+        return;
+    }
+    // Set task as ready
+    tsk->state = TASK_READY;
+    tsk->blockcause = BLOCK_NONE;
+    // Move task to ready list
+    blocked_tasks = list_remove(blocked_tasks, &(tsk->list_state));
+    ready_tasks[tsk->priority] =
+        list_append(ready_tasks[tsk->priority], tsk, &(tsk->list_state));
+}
 
 /**
  * SVCall handler. Enables the system tick, switches the processor to the
@@ -317,6 +385,13 @@ void select_active_task() {
         if (ready_tasks[i] != NULL)
             break;
     }
+    if (ready_tasks[i] == NULL) {
+        /**
+         * There is only one task (idle task). It should be active task, so just
+         * leave it running
+         */
+        return;
+    }
     // Select the head of this ready task list
     new_active = list_get_head(ready_tasks[i]);
     ready_tasks[i] = list_remove(ready_tasks[i], &(new_active->list_state));
@@ -330,8 +405,9 @@ void select_active_task() {
                                         &(active_task->list_state));
         } else {
             // Append active task to appropriate ready list
-            ready_tasks[i] = list_append(ready_tasks[i], active_task,
-                                         &(active_task->list_state));
+            ready_tasks[active_task->priority] =
+                list_append(ready_tasks[active_task->priority], active_task,
+                            &(active_task->list_state));
         }
     }
     // Change the active task
@@ -412,8 +488,8 @@ static uint32_t *initialize_task_stack(uint32_t *stack_ptr, void *return_pc,
  * Handles exit of task
  */
 static void task_exithandler() {
-    LOG_E(TAG, "Task named '%s' exited", active_task->name);
-    exit(ERR_SCHEDULER);
+    LOG_I(TAG, "Task named '%s' exited", active_task->name);
+    task_destroy((task_handle_t)active_task);
 }
 
 /**
@@ -421,9 +497,23 @@ static void task_exithandler() {
  * @param arg: unused.
  */
 static void idle_entry(void *arg) {
+    task_status_t *task;
     while (1) {
-        LOG_D(TAG, "Idle loop");
-        delay_ms(200);
+        LOG_MIN(SYSLOGLEVEL_DEBUG, TAG, "Idle loop");
+        /**
+         * Reap resources of exited tasks
+         */
+        while (exited_tasks != NULL) {
+            task = list_get_head(exited_tasks);
+            exited_tasks = list_remove(exited_tasks, &(task->list_state));
+            LOG_MIN(SYSLOGLEVEL_DEBUG, TAG, "Reaping task");
+            // Free task and task stack
+            if (task->stack_allocated) {
+                free(task->stack_end);
+            }
+            free(task);
+        }
+        // Yield to another task
         task_yield();
     }
 }

@@ -22,10 +22,10 @@ typedef enum {
 
 /** Internal defintion of semaphore structure */
 typedef struct semaphore_state {
-    char lock;             /*!< Semaphore lock. 0 when open, 0xFF when locked*/
-    unsigned int value;    /*!< Semaphore value */
-    semaphore_type_t type; /*!< Semaphore type */
-    list_t waiting_tasks;  /*!< List of tasks waiting on the semaphore */
+    char lock; /*!< Semaphore lock. 0 when open, 0xFF when locked*/
+    volatile unsigned int value; /*!< Semaphore value */
+    semaphore_type_t type;       /*!< Semaphore type */
+    list_t waiting_tasks;        /*!< List of tasks waiting on the semaphore */
 } semaphore_state_t;
 
 /** Waiting task structure */
@@ -181,24 +181,26 @@ static void get_semaphore_lock(semaphore_state_t *sem) {
      * retry
      */
     asm volatile(
-        "try_lock_%=:\n"         // Entry point for reading the lock value
-        "ldrexb r0, [%[lock]]\n" // Get lock
-        "cmp r0, %[UNLOCKED]\n"  // Check if lock is open
+        "try_lock_%=:\n"        // Entry point for reading the lock value
+        "mov r2, %[lock]\n"     // Save lock address. GCC likes to overwrite it
+        "ldrexb r0, [r2]\n"       // Get lock value
+        "cmp r0, %[UNLOCKED]\n" // Check if lock is open
         "it eq\n"
-        "beq take_lock_%=\n"         // Lock is open, take it
-        "strexb r1, r0, [%[lock]]\n" // Lock is closed. Release memory access.
-        "cmp r1, #0x0\n"             // Check to make sure strexb updated memory
+        "beq take_lock_%=\n"  // Lock is open, take it
+        "strexb r1, r0, [r2]\n" // Lock is closed. Release memory access.
+        "cmp r1, #0x0\n"      // Check to make sure strexb updated memory
         "it ne\n"
-        "bne try_lock_%=\n"          // If strexb failed, try to get lock again
-        "take_lock_%=:\n"            // Section for taking the lock
-        "mov r0, %[LOCKED]\n"        // Set r0 to the locked value
-        "strexb r1, r0, [%[lock]]\n" // Try to store new locked value
-        "cmp r1, #0x0\n"             // Check to ensure strexb succeeded
+        "bne try_lock_%=\n"   // If strexb failed, try to get lock again
+        "take_lock_%=:\n"     // Section for taking the lock
+        "mov r0, %[LOCKED]\n" // Set r0 to the locked value
+        "strexb r1, r0, [r2]\n" // Try to store new locked value
+        "cmp r1, #0x0\n"      // Check to ensure strexb succeeded
         "it ne\n"
         "bne try_lock_%=\n" // strexb failed. Try to get lock again.
         :
-        : [ lock ] "p"(&(sem->lock)), [ LOCKED ] "i"(SEMAPHORE_LOCKED),
-          [ UNLOCKED ] "i"(SEMAPHORE_UNLOCKED));
+        : [ lock ] "r"(&(sem->lock)), [ LOCKED ] "i"(SEMAPHORE_LOCKED),
+          [ UNLOCKED ] "i"(SEMAPHORE_UNLOCKED)
+        : "r0", "r1", "r2");
 }
 
 /**
@@ -211,18 +213,21 @@ static void drop_semaphore_lock(semaphore_state_t *sem) {
      * Load semaphore lock using LDREXB. Check if lock is 0xFF, and if so drop
      * it. If not, spin the processor so user knowns there was an error
      */
-    asm volatile("ldrexb r0, [%[lock]]\n"
-                 "spin_%=:\n"            // Offset to spin processor from
-                 "cmp r0, %[UNLOCKED]\n" // Check if lock is unlocked
-                 "it eq\n"
-                 "beq spin_%=\n" // Spin here, lock is unlocked
-                 "mov r0, %[UNLOCKED]\n"
-                 "try_drop_%=:\n"
-                 "strexb r1, r0, [%[lock]]\n" // Set lock as unlocked
-                 "cmp r1, #0x0\n"             // Check if strexb succeeded
-                 "it ne\n"
-                 "bne try_drop_%=\n" // strexb failed, retry lock drop
-                 :
-                 : [ lock ] "p"(&(sem->lock)), [ LOCKED ] "i"(SEMAPHORE_LOCKED),
-                   [ UNLOCKED ] "i"(SEMAPHORE_UNLOCKED));
+    asm volatile(
+        "mov r2, %[lock]\n" // Save lock address. GCC likes to overwrite it with -O2
+        "ldrexb r0, [r2]\n"
+        "spin_%=:\n"            // Offset to spin processor from
+        "cmp r0, %[UNLOCKED]\n" // Check if lock is unlocked
+        "it eq\n"
+        "beq spin_%=\n" // Spin here, lock is unlocked
+        "mov r0, %[UNLOCKED]\n"
+        "try_drop_%=:\n"
+        "strexb r1, r0, [r2]\n" // Set lock as unlocked
+        "cmp r1, #0x0\n"        // Check if strexb succeeded
+        "it ne\n"
+        "bne try_drop_%=\n" // strexb failed, retry lock drop
+        :
+        : [ lock ] "p"(&(sem->lock)), [ LOCKED ] "i"(SEMAPHORE_LOCKED),
+          [ UNLOCKED ] "i"(SEMAPHORE_UNLOCKED)
+        : "r0", "r1");
 }

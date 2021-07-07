@@ -300,6 +300,13 @@ void unblock_task(task_handle_t task, block_reason_t reason) {
     blocked_tasks = list_remove(blocked_tasks, &(tsk->list_state));
     ready_tasks[tsk->priority] =
         list_append(ready_tasks[tsk->priority], tsk, &(tsk->list_state));
+#if SYS_USE_PREEMPTION == PREEMPTION_ENABLED
+    // Check to see if this task is higher priority than the active one.
+    if (tsk->priority > active_task->priority) {
+        // Force a context switch
+        set_pendsv();
+    }
+#endif
 }
 
 /**

@@ -84,28 +84,31 @@ semaphore_t semaphore_create_binary() {
 void semaphore_pend(semaphore_t sem) {
     semaphore_state_t *semaphore = (semaphore_state_t *)sem;
     waiting_task_t *queue_entry;
-    // Get the semaphore lock
-    get_semaphore_lock(semaphore);
-    // Check semaphore value
-    if (semaphore->value > 0) {
-        semaphore->value--;
-        // Release semaphore lock and return
-        drop_semaphore_lock(semaphore);
-        return;
-    } else {
-        // Place this task into semaphore's queue
-        queue_entry = malloc(sizeof(waiting_task_t));
-        if (queue_entry == NULL) {
-            LOG_E(TAG, "Out of memory to allocate queue entry\n");
-            exit(ERR_NOMEM);
+    while (1) {
+        // Get the semaphore lock
+        get_semaphore_lock(semaphore);
+        // Check semaphore value
+        if (semaphore->value > 0) {
+            semaphore->value--;
+            // Release semaphore lock and return
+            drop_semaphore_lock(semaphore);
+            return;
+        } else {
+            // Place this task into semaphore's queue
+            queue_entry = malloc(sizeof(waiting_task_t));
+            if (queue_entry == NULL) {
+                LOG_E(TAG, "Out of memory to allocate queue entry\n");
+                exit(ERR_NOMEM);
+            }
+            queue_entry->task = get_active_task();
+            // Add queue entry to semaphore queue
+            semaphore->waiting_tasks =
+                list_append(semaphore->waiting_tasks, queue_entry,
+                            &(queue_entry->list_state));
+            // Drop semaphore lock
+            drop_semaphore_lock(semaphore);
+            block_active_task(BLOCK_SEMAPHORE);
         }
-        queue_entry->task = get_active_task();
-        // Add queue entry to semaphore queue
-        semaphore->waiting_tasks = list_append(
-            semaphore->waiting_tasks, queue_entry, &(queue_entry->list_state));
-        // Drop semaphore lock
-        drop_semaphore_lock(semaphore);
-        block_active_task(BLOCK_SEMAPHORE);
     }
 }
 
@@ -178,17 +181,16 @@ static void get_semaphore_lock(semaphore_state_t *sem) {
      * retry
      */
     asm volatile(
-        "bkpt\n"
-        "try_lock_%=:\n"            // Entry point for reading the lock value
+        "try_lock_%=:\n"         // Entry point for reading the lock value
         "ldrexb r0, [%[lock]]\n" // Get lock
         "cmp r0, %[UNLOCKED]\n"  // Check if lock is open
         "it eq\n"
-        "beq take_lock_%=\n"            // Lock is open, take it
+        "beq take_lock_%=\n"         // Lock is open, take it
         "strexb r1, r0, [%[lock]]\n" // Lock is closed. Release memory access.
         "cmp r1, #0x0\n"             // Check to make sure strexb updated memory
         "it ne\n"
-        "bne try_lock_%=\n"             // If strexb failed, try to get lock again
-        "take_lock_%=:\n"               // Section for taking the lock
+        "bne try_lock_%=\n"          // If strexb failed, try to get lock again
+        "take_lock_%=:\n"            // Section for taking the lock
         "mov r0, %[LOCKED]\n"        // Set r0 to the locked value
         "strexb r1, r0, [%[lock]]\n" // Try to store new locked value
         "cmp r1, #0x0\n"             // Check to ensure strexb succeeded
@@ -209,9 +211,8 @@ static void drop_semaphore_lock(semaphore_state_t *sem) {
      * Load semaphore lock using LDREXB. Check if lock is 0xFF, and if so drop
      * it. If not, spin the processor so user knowns there was an error
      */
-    asm volatile("bkpt\n"
-                 "ldrexb r0, [%[lock]]\n"
-                 "spin_%=:\n"               // Offset to spin processor from
+    asm volatile("ldrexb r0, [%[lock]]\n"
+                 "spin_%=:\n"            // Offset to spin processor from
                  "cmp r0, %[UNLOCKED]\n" // Check if lock is unlocked
                  "it eq\n"
                  "beq spin_%=\n" // Spin here, lock is unlocked

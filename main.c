@@ -1,6 +1,6 @@
 /**
- * @file task_test.c
- * Test RTOS task creation, switching, and destruction
+ * @file semaphore_test.c
+ * Test RTOS semaphore pending and posting
  */
 
 #include <stdio.h>
@@ -9,15 +9,17 @@
 #include <unistd.h>
 
 #include <drivers/clock/clock.h>
+#include <drivers/gpio/gpio.h>
+#include <drivers/uart/uart.h>
+#include <sys/semaphore/semaphore.h>
 #include <sys/task/task.h>
 #include <util/logging/logging.h>
 
-static void rtos_task1(void *unused);
-static void rtos_task2(void *arg);
-static void rtos_task3(void *unused);
-static void rtos_task4(void *unused);
-static char t3stack[2048];
-static task_handle_t task3;
+static void fg_task(void *arg);
+static void bg_task(void *arg);
+
+static semaphore_t semaphore_handle;
+static UART_handle_t lpuart1;
 
 /**
  * Initializes system
@@ -28,120 +30,117 @@ static void system_init() {
 }
 
 /**
- * Task 1 entry point. Creates tasks and exits.
- * @param unused: Unused arg
+ * Sets up LPUART 1
  */
-static void rtos_task1(void *unused) {
-    task_config_t t3cfg = DEFAULT_TASK_CONFIG;
-    task_config_t t4cfg = DEFAULT_TASK_CONFIG;
-    const char *TAG = "Rtos_Task1";
-    LOG_D(TAG, "Task 1: Create task 3 and 4. Starting");
-    // Create task 3
-    t3cfg.task_stacksize = 2048;
-    t3cfg.task_stack = t3stack;
-    t3cfg.task_name = "Task3";
-    LOG_D(TAG, "Task 1 creating task 3");
-    task3 = task_create(rtos_task3, NULL, &t3cfg);
-    if (task3 == NULL) {
-        LOG_E(TAG, "Could not create task 3");
+static void init_lpuart1() {
+    const char *TAG = "init_lpuart1";
+    syserr_t err;
+    UART_config_t lpuart_conf = UART_DEFAULT_CONFIG;
+    GPIO_config_t gpio_config = GPIO_DEFAULT_CONFIG;
+    /* Init GPIO pins A2 and A3 for tx/rx */
+    gpio_config.mode = GPIO_mode_afunc;
+    gpio_config.alternate_func = GPIO_af8;
+    gpio_config.output_speed = GPIO_speed_vhigh;
+    gpio_config.pullup_pulldown = GPIO_pullup;
+    err = GPIO_config(GPIO_PORT_A, GPIO_PIN_2, &gpio_config);
+    if (err != SYS_OK) {
+        LOG_E(TAG, "Could not init GPIO A2");
+        exit(err);
     }
-    // Delay, then create task 4. This task will kill task 3
-    task_delay(1000);
-    LOG_D(TAG, "Task 1 running. Will create task 4");
-    t4cfg.task_name = "Task4";
-    t4cfg.task_priority = DEFAULT_PRIORITY + 1;
-    if (task_create(rtos_task4, task3, &t4cfg) == NULL) {
-        LOG_E(TAG, "Could not create task 4");
+    err = GPIO_config(GPIO_PORT_A, GPIO_PIN_3, &gpio_config);
+    if (err != SYS_OK) {
+        LOG_E(TAG, "Could not init GPIO A3");
+        exit(err);
     }
-    return;
+    /* Configure UART device */
+    lpuart_conf.UART_baud_rate = UART_baud_115200;
+    lpuart_conf.UART_textmode = UART_txtmode_en;
+    lpuart_conf.UART_echomode = UART_echo_en;
+    lpuart1 = UART_open(LPUART_1, &lpuart_conf, &err);
+    if (lpuart1 == NULL) {
+        LOG_E(TAG, "Could not init LPUART1");
+        exit(err);
+    }
 }
 
 /**
- * Task 2 entry point. Will run, and periodically yield execution.
- * The task will exit of its own accord
- * @param arg: String passed at task creation
+ * Foreground task entry point. Runs with a high priority, and will pend on
+ * a semaphore after printing data to LPUART1
+ * @param arg: unused.
  */
-static void rtos_task2(void *arg) {
-    const char *TAG = "Rtos_Task2";
-    int i = 20;
-    LOG_D(TAG, "Task 2 starting. Argument %s", (char *)arg);
-    LOG_D(TAG, "Task 2 will yield, and will exit independently");
-    while (i) {
-        LOG_D(TAG, "Task 2 running");
-        i--;
-        task_delay(500);
-        if (i % 5 == 0) {
-            // Should yield a total of 4 times
-            LOG_D(TAG, "Task 2 yielding");
-            task_yield();
+static void fg_task(void *arg) {
+    syserr_t err;
+    task_config_t bg_taskconf = DEFAULT_TASK_CONFIG;
+    const char *TAG = "Foreground Task";
+    LOG_I(TAG, "Foreground Task starting");
+    /* Create semaphores and UART handle */
+    init_lpuart1();
+    semaphore_handle = semaphore_create_binary();
+    if (semaphore_handle == NULL) {
+        LOG_E(TAG, "Could not create semaphore");
+    }
+    LOG_I(TAG, "Creating low priority background task");
+    bg_taskconf.task_priority = DEFAULT_PRIORITY - 1;
+    bg_taskconf.task_name = "Background Task";
+    if (task_create(bg_task, NULL, &bg_taskconf) == NULL) {
+        LOG_E(TAG, "Could not create background task");
+    }
+    /** Main runloop. Print to UART device, then pend on semaphore */
+    while (1) {
+        UART_write(lpuart1, (uint8_t *)"Foreground task running\n", 24, &err);
+        if (err != SYS_OK) {
+            LOG_E(TAG, "Failed to write to UART device");
+            exit(err);
+        }
+        UART_write(lpuart1, (uint8_t *)"Foreground task pending on semaphore\n",
+                   37, &err);
+        if (err != SYS_OK) {
+            LOG_E(TAG, "Failed to write to UART device");
+            exit(err);
+        }
+        LOG_D(TAG, "Foreground task pending on semaphore");
+        semaphore_pend(semaphore_handle);
+        UART_write(lpuart1, (uint8_t *)"Foreground task woke from semaphore\n",
+                   36, &err);
+        LOG_D(TAG, "Foreground task awoke from semaphore");
+        if (err != SYS_OK) {
+            LOG_E(TAG, "Failed to write to UART device");
+            exit(err);
         }
     }
-    // Task runtime has expired. Exit.
-    return;
+    semaphore_destroy(semaphore_handle);
 }
 
 /**
- * Task 3 entry point. Will attempt to monopolize CPU time. Task 4 should
- * preempt and destroy it if preemption is enabled
- * @param unused: unused
+ * Background task entry point. Runs with low priority, and will post to
+ * semaphore after a delay
+ * @param arg: Unused
  */
-static void rtos_task3(void *unused) {
-    const char *TAG = "Rtos_Task3";
-    LOG_D(TAG, "Task 3: Holding CPU time");
+static void bg_task(void *arg) {
+    const char *TAG = "Background Task";
     while (1) {
-        // Delay_ms does NOT yield
-        blocking_delay_ms(500);
-        LOG_D(TAG, "Task 3 running");
+        LOG_I(TAG, "Task sleeping for 1000ms");
+        task_delay(1000);
+        LOG_I(TAG, "Posting to semaphore");
+        semaphore_post(semaphore_handle);
     }
 }
 
 /**
- * Task 4 entry point. Will delay, then destroy task 3
- * @param arg: Task 3 handle
- */
-static void rtos_task4(void *arg) {
-    const char *TAG = "Rtos_Task4";
-    LOG_D(TAG, "Task 4 starting. Dropping into delay, then killing task 3");
-    task_delay(2000);
-    LOG_D(TAG, "Task 4 destroying task 3");
-    task_destroy((task_handle_t)arg);
-    LOG_D(TAG, "Task 4 exiting");
-}
-
-/**
- * Testing entry point. Tests task creation, switching, and destruction
+ * Testing entry point. Tests semaphore pending and posting
  */
 int main() {
-    task_handle_t task1;
-    task_config_t task1cfg = DEFAULT_TASK_CONFIG;
-    task_handle_t task2;
-    task_config_t task2cfg = DEFAULT_TASK_CONFIG;
-    char *arg = "Hello";
-
+    const char *TAG = "main";
+    task_config_t fgtask_conf = DEFAULT_TASK_CONFIG;
+    fgtask_conf.task_name = "Foreground Task";
+    /* Init system */
     system_init();
-
-    /**
-     * Task 1 has a high priority and spawns task 3 and 4
-     */
-    task1cfg.task_name = "Task1";
-    task1cfg.task_priority = DEFAULT_PRIORITY + 1;
-    task1 = task_create(rtos_task1, NULL, &task1cfg);
-    if (!task1) {
-        LOG_E(__FILE__, "Failed to create task 1\n");
+    /* Create foreground task */
+    if (task_create(fg_task, NULL, &fgtask_conf) == NULL) {
+        LOG_E(TAG, "Failed to create rtos task");
         return ERR_FAIL;
     }
-    /**
-     * Task 2 has a default priority and will exit of its own accord
-     * It also will periodically yield to allow another task to run.
-     */
-    task2cfg.task_name = "Task2";
-    task2cfg.task_priority = DEFAULT_PRIORITY;
-    task2 = task_create(rtos_task2, arg, &task2cfg);
-    if (!task2) {
-        LOG_E(__FILE__, "Failed to create task 2\n");
-        return ERR_FAIL;
-    }
-    LOG_D(__FILE__, "Starting RTOS");
+    LOG_I(TAG, "Starting RTOS");
     rtos_start();
     return SYS_OK;
 }

@@ -61,9 +61,9 @@ static list_t blocked_tasks = NULL; // Tasks blocked by system
 static list_t exited_tasks = NULL;  // Exited tasks waiting to be reaped
 
 // Logging tag
-const char *TAG = "task.c";
+static const char *TAG = "task.c";
 // Idle task name
-const char *IDLE_TASK_NAME = "Idle Task";
+static const char *IDLE_TASK_NAME = "Idle Task";
 
 // Static functions
 static inline void set_pendsv();

@@ -1,6 +1,11 @@
-/**
- * @file semaphore_test.c
- * Test RTOS semaphore pending and posting
+/** @file log_test.c
+ * Tests system logging and printf implementations
+ * This test, when successful, should log to the defined system console,
+ * which will be one of the following depending on the chosen logger:
+ * SYSLOG_LPUART1: LPUART1, hooked up to the USB-serial converter on dev board
+ * SYSLOG_SEMIHOST: system debugger console (semihosting must be enabled)
+ * SYSLOG_SWO: system swo output (swo must be enabled)
+ * SYSLOG_DISABLED: logging should not occur
  */
 
 #include <stdio.h>
@@ -8,18 +13,11 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <config.h>
 #include <drivers/clock/clock.h>
-#include <drivers/gpio/gpio.h>
-#include <drivers/uart/uart.h>
-#include <sys/semaphore/semaphore.h>
-#include <sys/task/task.h>
 #include <util/logging/logging.h>
 
-static void fg_task(void *arg);
-static void bg_task(void *arg);
-
-static semaphore_t semaphore_handle;
-static UART_handle_t lpuart1;
+const char* TAG = "log_test";
 
 /**
  * Initializes system
@@ -30,117 +28,116 @@ static void system_init() {
 }
 
 /**
- * Sets up LPUART 1
+ * Logs a test string until the system device is forced to flush naturally
  */
-static void init_lpuart1() {
-    const char *TAG = "init_lpuart1";
-    syserr_t err;
-    UART_config_t lpuart_conf = UART_DEFAULT_CONFIG;
-    GPIO_config_t gpio_config = GPIO_DEFAULT_CONFIG;
-    /* Init GPIO pins A2 and A3 for tx/rx */
-    gpio_config.mode = GPIO_mode_afunc;
-    gpio_config.alternate_func = GPIO_af8;
-    gpio_config.output_speed = GPIO_speed_vhigh;
-    gpio_config.pullup_pulldown = GPIO_pullup;
-    err = GPIO_config(GPIO_PORT_A, GPIO_PIN_2, &gpio_config);
-    if (err != SYS_OK) {
-        LOG_E(TAG, "Could not init GPIO A2");
-        exit(err);
+static syserr_t test1_naturallog() {
+    int iterations, ret, log_strlen;
+    char log_str[] = "abcdefghijklmnopqrstuvwxyz\n";
+    log_strlen = sizeof(log_str) - 1;
+    if (SYSLOGBUFSIZE) {
+        iterations = (SYSLOGBUFSIZE / (sizeof(log_str) - 1)) + 1;
+    } else {
+        // If no log buffer exists, this test can pass without logging data
+        iterations = 0;
     }
-    err = GPIO_config(GPIO_PORT_A, GPIO_PIN_3, &gpio_config);
-    if (err != SYS_OK) {
-        LOG_E(TAG, "Could not init GPIO A3");
-        exit(err);
+    while (iterations--) {
+        // Log output string
+        ret = printf(log_str);
+        if (ret != log_strlen) {
+            return ERR_FAIL;
+        }
     }
-    /* Configure UART device */
-    lpuart_conf.UART_baud_rate = UART_baud_115200;
-    lpuart_conf.UART_textmode = UART_txtmode_en;
-    lpuart_conf.UART_echomode = UART_echo_en;
-    lpuart1 = UART_open(LPUART_1, &lpuart_conf, &err);
-    if (lpuart1 == NULL) {
-        LOG_E(TAG, "Could not init LPUART1");
-        exit(err);
+    ret = printf("---- TEST 1 Passed! ----- \n");
+    if (ret != 27) {
+        // Test 1 didn't actually pass....
+        while (1)
+            ; // Spin so debugger catches here
     }
+    return SYS_OK;
 }
 
 /**
- * Foreground task entry point. Runs with a high priority, and will pend on
- * a semaphore after printing data to LPUART1
- * @param arg: unused.
+ * Logs a string, and then forces it to flush
  */
-static void fg_task(void *arg) {
-    syserr_t err;
-    task_config_t bg_taskconf = DEFAULT_TASK_CONFIG;
-    const char *TAG = "Foreground Task";
-    LOG_I(TAG, "Foreground Task starting");
-    /* Create semaphores and UART handle */
-    init_lpuart1();
-    semaphore_handle = semaphore_create_binary();
-    if (semaphore_handle == NULL) {
-        LOG_E(TAG, "Could not create semaphore");
-    }
-    LOG_I(TAG, "Creating low priority background task");
-    bg_taskconf.task_priority = DEFAULT_PRIORITY - 1;
-    bg_taskconf.task_name = "Background Task";
-    if (task_create(bg_task, NULL, &bg_taskconf) == NULL) {
-        LOG_E(TAG, "Could not create background task");
-    }
-    /** Main runloop. Print to UART device, then pend on semaphore */
-    while (1) {
-        UART_write(lpuart1, (uint8_t *)"Foreground task running\n", 24, &err);
-        if (err != SYS_OK) {
-            LOG_E(TAG, "Failed to write to UART device");
-            exit(err);
-        }
-        UART_write(lpuart1, (uint8_t *)"Foreground task pending on semaphore\n",
-                   37, &err);
-        if (err != SYS_OK) {
-            LOG_E(TAG, "Failed to write to UART device");
-            exit(err);
-        }
-        LOG_D(TAG, "Foreground task pending on semaphore");
-        semaphore_pend(semaphore_handle);
-        UART_write(lpuart1, (uint8_t *)"Foreground task woke from semaphore\n",
-                   36, &err);
-        LOG_D(TAG, "Foreground task awoke from semaphore");
-        if (err != SYS_OK) {
-            LOG_E(TAG, "Failed to write to UART device");
-            exit(err);
-        }
-    }
-    semaphore_destroy(semaphore_handle);
-}
-
-/**
- * Background task entry point. Runs with low priority, and will post to
- * semaphore after a delay
- * @param arg: Unused
- */
-static void bg_task(void *arg) {
-    const char *TAG = "Background Task";
-    while (1) {
-        LOG_I(TAG, "Task sleeping for 1000ms");
-        task_delay(1000);
-        LOG_I(TAG, "Posting to semaphore");
-        semaphore_post(semaphore_handle);
-    }
-}
-
-/**
- * Testing entry point. Tests semaphore pending and posting
- */
-int main() {
-    const char *TAG = "main";
-    task_config_t fgtask_conf = DEFAULT_TASK_CONFIG;
-    fgtask_conf.task_name = "Foreground Task";
-    /* Init system */
-    system_init();
-    /* Create foreground task */
-    if (task_create(fg_task, NULL, &fgtask_conf) == NULL) {
-        LOG_E(TAG, "Failed to create rtos task");
+static syserr_t test2_forcedflush() {
+    int ret;
+    ret = printf(
+        "This test string should print several seconds before the next one\n");
+    if (ret != 66) {
         return ERR_FAIL;
     }
-    LOG_I(TAG, "Starting RTOS");
-    rtos_start();
+    if (fsync(STDOUT_FILENO) != 0) {
+        return ERR_FAIL;
+    }
+    blocking_delay_ms(2000);
+    ret = printf("This is the second string\n");
+    if (ret != 26) {
+        return ERR_FAIL;
+    }
+    ret = printf("---- TEST 2 Passed! ----- \n");
+    if (ret != 27) {
+        // Test 2 didn't actually pass....
+        while (1)
+            ; // Spin so debugger catches here
+    }
+    return SYS_OK;
+}
+
+/**
+ * Tests system log level to be sure that only those logs of a given priority
+ * print
+ */
+static syserr_t test3_loglevel() {
+    printf("This test logs output with various debugging levels\n");
+    printf("Your current logging level is %d\n", SYSLOGLEVEL);
+    LOG_E(TAG, "This message should be visible if %i>=%i", SYSLOGLEVEL_ERROR,
+          SYSLOGLEVEL);
+    LOG_W(TAG, "This message should be visible if %i>=%i", SYSLOGLEVEL_WARNING,
+          SYSLOGLEVEL);
+    LOG_I(TAG, "This message should be visible if %i>=%i", SYSLOGLEVEL_INFO,
+          SYSLOGLEVEL);
+    LOG_D(TAG, "This message should be visible if %i>=%i", SYSLOGLEVEL_DEBUG,
+          SYSLOGLEVEL);
+    printf("---- Test 3 Complete -----\n");
+    fsync(STDIN_FILENO);
+    return SYS_OK;
+}
+
+/**
+ * This test logs a variety of strings to the output, deliberately testing
+ * flushing the output early as well as logging strings that will require it
+ * to be flushed.
+ */
+int main() {
+    system_init();
+    /**
+     * Log a series of strings, to force the output to flush naturally
+     */
+    printf("This is the system logging test\n");
+    printf("You should be seeing these strings logged to your selected logging "
+           "device\n");
+    printf("If any string appears truncated, the test likely failed\n");
+    printf("----- TEST 1: Natural Flush --------\n");
+    if (test1_naturallog() != SYS_OK) {
+        LOG_E(TAG, "Natural log flushing test failed!\n");
+        exit(ERR_FAIL);
+    }
+    // Test fsync
+    if (fsync(STDOUT_FILENO) != 0) {
+        LOG_E(TAG, "fsync() does not work");
+        exit(ERR_FAIL);
+    }
+    printf("----- TEST 2: Forced flush -------\n");
+    if (test2_forcedflush() != SYS_OK) {
+        LOG_E(TAG, "Forced flush test failed");
+        exit(ERR_FAIL);
+    }
+    // Test log levels
+    printf("----- TEST 3: Log Levels -------\n");
+    if (test3_loglevel() != SYS_OK) {
+        LOG_E(TAG, "Log level tests failed");
+        exit(ERR_FAIL);
+    }
+    printf("All tests completed\n");
     return SYS_OK;
 }

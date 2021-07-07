@@ -81,7 +81,7 @@ $(BUILDDIR)/$(PROG).elf: $(_OBJ)
 	@ echo "Linking $@"
 	@ $(CC) -o $@ $^ $(local_CFLAGS) $(local_LDFLAGS)
 	@ echo "Code sizes for $@:"
-	$(SIZE) -G $@
+	@ $(SIZE) -G $@
 
 ##### Flash code to board using OpenOCD (0x08000000 is start of flash bank)
 flash: $(BUILDDIR)/$(PROG).bin

@@ -17,6 +17,8 @@
 #include <drivers/clock/clock.h>
 #include <util/logging/logging.h>
 
+const char* TAG = "log_test";
+
 /**
  * Initializes system
  */
@@ -88,13 +90,13 @@ static syserr_t test2_forcedflush() {
 static syserr_t test3_loglevel() {
     printf("This test logs output with various debugging levels\n");
     printf("Your current logging level is %d\n", SYSLOGLEVEL);
-    LOG_E("This message should be visible if %i>=%i", SYSLOGLEVEL_ERROR,
+    LOG_E(TAG, "This message should be visible if %i>=%i", SYSLOGLEVEL_ERROR,
           SYSLOGLEVEL);
-    LOG_W("This message should be visible if %i>=%i", SYSLOGLEVEL_WARNING,
+    LOG_W(TAG, "This message should be visible if %i>=%i", SYSLOGLEVEL_WARNING,
           SYSLOGLEVEL);
-    LOG_I("This message should be visible if %i>=%i", SYSLOGLEVEL_INFO,
+    LOG_I(TAG, "This message should be visible if %i>=%i", SYSLOGLEVEL_INFO,
           SYSLOGLEVEL);
-    LOG_D("This message should be visible if %i>=%i", SYSLOGLEVEL_DEBUG,
+    LOG_D(TAG, "This message should be visible if %i>=%i", SYSLOGLEVEL_DEBUG,
           SYSLOGLEVEL);
     printf("---- Test 3 Complete -----\n");
     fsync(STDIN_FILENO);
@@ -117,23 +119,23 @@ int main() {
     printf("If any string appears truncated, the test likely failed\n");
     printf("----- TEST 1: Natural Flush --------\n");
     if (test1_naturallog() != SYS_OK) {
-        LOG_E("Natural log flushing test failed!\n");
+        LOG_E(TAG, "Natural log flushing test failed!\n");
         exit(ERR_FAIL);
     }
     // Test fsync
     if (fsync(STDOUT_FILENO) != 0) {
-        LOG_E("fsync() does not work");
+        LOG_E(TAG, "fsync() does not work");
         exit(ERR_FAIL);
     }
     printf("----- TEST 2: Forced flush -------\n");
     if (test2_forcedflush() != SYS_OK) {
-        LOG_E("Forced flush test failed");
+        LOG_E(TAG, "Forced flush test failed");
         exit(ERR_FAIL);
     }
     // Test log levels
     printf("----- TEST 3: Log Levels -------\n");
     if (test3_loglevel() != SYS_OK) {
-        LOG_E("Log level tests failed");
+        LOG_E(TAG, "Log level tests failed");
         exit(ERR_FAIL);
     }
     printf("All tests completed\n");

@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <config.h>
 #include <drivers/clock/clock.h>
 #include <drivers/device/device.h>
 #include <sys/err.h>
@@ -40,7 +41,7 @@ typedef struct {
     char echo_char;          /*!< Next echo character to send on TX line */
     semaphore_t write_sem;   /*!< Posted to when space exists in write buffer */
     semaphore_t read_sem;    /*!< Posted to when data exists in read buffer */
-    semaphore_t tx_sem; /*!< Posted to when transmission completes */
+    semaphore_t tx_sem;      /*!< Posted to when transmission completes */
 } UART_status_t;
 
 #define UART_RINGBUF_SIZE 80
@@ -95,16 +96,21 @@ UART_handle_t UART_open(UART_periph_t periph, UART_config_t *config,
     buf_init(&handle->write_buf, UART_WBUFFS[periph], UART_RINGBUF_SIZE);
     // Setup semaphores
     if (rtos_started()) {
-        handle->write_sem = NULL;
+        handle->write_sem = handle->tx_sem = handle->read_sem = NULL;
         handle->write_sem = semaphore_create_binary();
         if (handle->write_sem == NULL) {
             *err = ERR_NOMEM;
             UART_close(handle);
             return NULL;
         }
-        handle->read_sem = NULL;
         handle->read_sem = semaphore_create_binary();
         if (handle->read_sem == NULL) {
+            *err = ERR_NOMEM;
+            UART_close(handle);
+            return NULL;
+        }
+        handle->tx_sem = semaphore_create_binary();
+        if (handle->tx_sem == NULL) {
             *err = ERR_NOMEM;
             UART_close(handle);
             return NULL;
@@ -215,16 +221,36 @@ int UART_read(UART_handle_t handle, uint8_t *buf, uint32_t len, syserr_t *err) {
          */
         while (buf_getsize(&(((UART_status_t *)handle)->read_buf)) == 0 &&
                timeout != UART_TIMEOUT_NONE) {
-            // If the timeout is infinite, spin here until there is data to read
-            if (timeout != UART_TIMEOUT_INF) {
-                // Decrement timeout
-                blocking_delay_ms(200);
-                timeout -= 200;
-                if (timeout - 200 < UART_TIMEOUT_NONE) {
-                    // Just set timeout to NONE (defined to be zero)
-                    timeout = UART_TIMEOUT_NONE;
+            if (rtos_started()) {
+                // Pend on the read semaphore until data is available
+                if (timeout == UART_TIMEOUT_INF) {
+                    semaphore_pend(((UART_status_t *)handle)->read_sem,
+                                   SYS_TIMEOUT_INF);
                 } else {
+                    // Delay for timeout ms
+                    semaphore_pend(((UART_status_t *)handle)->read_sem,
+                                   timeout);
+                    if (buf_getsize(&(((UART_status_t *)handle)->read_buf)) ==
+                        0) {
+                        // No data was read before timeout. Set timeout to none.
+                        timeout = UART_TIMEOUT_NONE;
+                    }
+                }
+            } else {
+                /**
+                 * If the timeout is infinite, spin here until there is data to
+                 * read
+                 */
+                if (timeout != UART_TIMEOUT_INF) {
+                    // Decrement timeout
+                    blocking_delay_ms(200);
                     timeout -= 200;
+                    if (timeout - 200 < UART_TIMEOUT_NONE) {
+                        // Just set timeout to NONE (defined to be zero)
+                        timeout = UART_TIMEOUT_NONE;
+                    } else {
+                        timeout -= 200;
+                    }
                 }
             }
         }
@@ -285,11 +311,28 @@ int UART_write(UART_handle_t handle, uint8_t *buf, uint32_t len,
         // Wait for there to be space in the ringbuffer
         while (buf_getsize(&(uart->write_buf)) == UART_RINGBUF_SIZE &&
                timeout != UART_TIMEOUT_NONE) {
-            // If the timeout is set to infinity, we should just spin here
-            if (timeout != UART_TIMEOUT_INF) {
-                // Decrement the timeout
-                blocking_delay_ms(1);
-                timeout--;
+            if (rtos_started()) {
+                // Pend on the write semaphore until space is available
+                if (timeout == UART_TIMEOUT_INF) {
+                    semaphore_pend(uart->write_sem, SYS_TIMEOUT_INF);
+                } else {
+                    // Delay for timeout ms
+                    semaphore_pend(uart->write_sem, timeout);
+                    if (buf_getsize(&(uart->write_buf)) == UART_RINGBUF_SIZE) {
+                        /**
+                         * No space available before timeout. Set timeout to
+                         * none.
+                         */
+                        timeout = UART_TIMEOUT_NONE;
+                    }
+                }
+            } else {
+                // If the timeout is set to infinity, we should just spin here
+                if (timeout != UART_TIMEOUT_INF) {
+                    // Decrement the timeout
+                    blocking_delay_ms(1);
+                    timeout--;
+                }
             }
         }
         // There is space to write data. Write it.
@@ -305,18 +348,28 @@ int UART_write(UART_handle_t handle, uint8_t *buf, uint32_t len,
      * when transmission is done.
      */
     while (uart->tx_active && timeout != UART_TIMEOUT_NONE) {
-        if (timeout != UART_TIMEOUT_INF) {
-            blocking_delay_ms(200);
-            if (timeout - 200 < UART_TIMEOUT_NONE) {
-                // Just set timeout to NONE (defined to be zero)
-                timeout = UART_TIMEOUT_NONE;
+        if (rtos_started()) {
+            // Pend on the transmission complete semaphore
+            if (timeout == UART_TIMEOUT_INF) {
+                semaphore_pend(uart->tx_sem, SYS_TIMEOUT_INF);
             } else {
-                timeout -= 200;
+                semaphore_pend(uart->tx_sem, timeout);
+                timeout = UART_TIMEOUT_NONE; // Timeout expired
+            }
+        } else {
+            if (timeout != UART_TIMEOUT_INF) {
+                blocking_delay_ms(200);
+                if (timeout - 200 < UART_TIMEOUT_NONE) {
+                    // Just set timeout to NONE (defined to be zero)
+                    timeout = UART_TIMEOUT_NONE;
+                } else {
+                    timeout -= 200;
+                }
             }
         }
     }
-    if (timeout == UART_TIMEOUT_NONE &&
-        uart->cfg.UART_read_timeout != UART_TIMEOUT_NONE) {
+    if (uart->tx_active && uart->cfg.UART_read_timeout != UART_TIMEOUT_NONE) {
+        // A timeout occurred
         *err = ERR_TIMEOUT;
     }
     return num_written;
@@ -414,9 +467,12 @@ static syserr_t UART_start_tx(UART_status_t *handle) {
         // Device is already transmitting. Block this attempt to transmit
         return ERR_INUSE;
     } else {
-        // Busy wait for the uart to be available for transmission
-        while (handle->tx_active)
-            ;
+        // wait for the uart to be available for transmission
+        while (handle->tx_active) {
+            if (rtos_started()) {
+                semaphore_pend(handle->tx_sem, SYS_TIMEOUT_INF);
+            }
+        }
     }
     // Enable interrupts for this UART device, and set TX as active
     handle->tx_active = true;
@@ -442,14 +498,17 @@ static void UART_transmit(UART_status_t *handle) {
         } else {
             handle->echo_char = '\0'; // Clears the echo character
         }
-        // Send by writing to TDR register
-        handle->regs->TDR = USART_TDR_TDR & data;
     } else {
         // Read a byte from the ring buffer and send it
-        if (buf_read(&(handle->write_buf), &data) == SYS_OK) {
-            // Send by writing to the TDR register
-            handle->regs->TDR = USART_TDR_TDR & data;
+        if (buf_read(&(handle->write_buf), &data) != SYS_OK) {
+            return; // Do not write data if read from buffer failed
         }
+    }
+    // Send by writing to the TDR register
+    handle->regs->TDR = USART_TDR_TDR & data;
+    if (rtos_started()) {
+        // Post to the write semaphore
+        semaphore_post(handle->write_sem);
     }
 }
 
@@ -485,9 +544,13 @@ static void UART_interrupt(UART_periph_t source) {
         }
         // Store the data
         if (buf_write(&(handle->read_buf), data) != SYS_OK) {
-            LOG_D(__FILE__, "Dropping character from UART");
+            LOG_MIN(SYSLOGLEVEL_DEBUG, __FILE__,
+                    "Dropping character from UART");
             // Write 1 to RXFRQ to drop the data
             SETBITS(handle->regs->RQR, USART_RQR_RXFRQ);
+        } else if (rtos_started()) {
+            // post to read semaphore
+            semaphore_post(handle->read_sem);
         }
     }
     if (READBITS(handle->regs->ISR, USART_ISR_TC)) {
@@ -506,6 +569,10 @@ static void UART_interrupt(UART_periph_t source) {
             CLEARBITS(handle->regs->CR1, USART_CR1_TE);
             // Clear the TC interrupt
             SETBITS(handle->regs->ICR, USART_ICR_TCCF);
+            if (rtos_started()) {
+                // Post to the transmission complete semaphore
+                semaphore_post(handle->tx_sem);
+            }
         }
     }
     if (READBITS(handle->regs->ISR, USART_ISR_TXE) && handle->tx_active) {

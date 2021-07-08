@@ -10,7 +10,12 @@
 
 #include "clock.h"
 
-#define REG_VERIFY_TIMEOUT 10 // How many times to check register before timeout
+/**
+ *  This seems long, but on release builds registers tend to take a while
+ * to propigate
+ */
+#define REG_VERIFY_TIMEOUT                                                     \
+    150 // How many times to check register before timeout
 
 // Static variables to record current clock frequencies and states
 static sysclock_src_t system_clk_src = CLK_MSI; // Default clock is MSI

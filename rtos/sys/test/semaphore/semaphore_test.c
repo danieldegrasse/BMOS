@@ -110,7 +110,10 @@ static void fg_task(void *arg) {
              *)"Foreground task waiting on semaphore with timeout of 1500ms\n",
         60, &err);
     LOG_I(TAG, "Attempting to pend on semaphore with timeout of 1500ms");
-    semaphore_pend(semaphore_handle, 1500);
+    if (semaphore_pend(semaphore_handle, 1500) == SYS_OK) {
+        LOG_E(TAG, "Semaphore test failed, pend had successful return value on "
+                   "timeout");
+    };
     LOG_I(TAG, "Returned from pend with timeout");
     UART_write(
         lpuart1,

@@ -3,16 +3,21 @@
  * @file uart_test.c
  * Implements a series of tests for the UART driver, using the LPUART1 device
  * The test requires a serial terminal at 115200 baud (with around 80 visible
- * text columns or line wrap enabled) be open on to view the UART output. The
- * output of a successful test is reproduced below:
+ * text columns or line wrap enabled) be open on to view the UART output.
+ * Note that the test runs twice and procduces the same output each time, since
+ * the driver must be tested with and without the RTOS.
+ * The output of a successful test is reproduced below:
+ *
+ *
  */
 
 #include <stdlib.h>
 #include <string.h>
 
-#include <drivers/gpio/gpio.h>
 #include <drivers/clock/clock.h>
+#include <drivers/gpio/gpio.h>
 #include <drivers/uart/uart.h>
+#include <sys/task/task.h>
 
 /**
  * Sets up the GPIO pins used by the UART device
@@ -40,46 +45,40 @@ syserr_t init_uart_gpio() {
 #define READBUF_LEN 90
 #define ECHO_COUNT 10
 
-int main() {
-    UART_handle_t lpuart;
+static UART_handle_t lpuart;
+static char *promptstrings[] = {
+    "Welcome to the UART device test!\n",
+    "This string tests the ability of the uart driver to write very long \n"
+    "data strings. If you do not see 'AAAA' at the end of this string, \n"
+    "the test failed: 'AAAA'\n",
+    "The UART device will now echo characters. Type 10 characters into \n"
+    "the serial terminal, and you should see them echoed back to you as \n"
+    "you type:\n",
+    "The UART device will now attempt a bulk read. Type 90 characters \n"
+    "into the serial terminal, and you should see them all echoed back \n"
+    "at once\n",
+    "Successfully read 90 characters. Now, wait several seconds \n"
+    "without typing. The UART device should print that it read 0 \n"
+    "characters from the device.\n",
+    "The UART device successfully read 0 characters\n",
+    "This is the final UART test. It verifies the write timeout. This\n"
+    "message is delibrately very long. You should not see the end of \n"
+    "this message. The ending characters will be 'EEEE'. If you see a\n"
+    "second instance of those characters in this message, the test has\n"
+    "failed 'EEEE'\n",
+    "\nAll UART tests passed! The device will enter echo mode now.\n"
+    "It should echo all characters typed to the prompt.\n"};
+
+/**
+ * Test function entry point. Tests UART driver.
+ * @param arg: Unused
+ */
+void test_func(void *arg) {
     UART_config_t lpuart_config = UART_DEFAULT_CONFIG;
-    clock_cfg_t clk_cfg = CLOCK_DEFAULT_CONFIG;
     lpuart_config.UART_textmode = UART_txtmode_en;
-    char *promptstrings[] = {
-        "Welcome to the UART device test!\n",
-        "This string tests the ability of the uart driver to write very long \n"
-        "data strings. If you do not see 'AAAA' at the end of this string, \n"
-        "the test failed: 'AAAA'\n",
-        "The UART device will now echo characters. Type 10 characters into \n"
-        "the serial terminal, and you should see them echoed back to you as \n"
-        "you type:\n",
-        "The UART device will now attempt a bulk read. Type 90 characters \n"
-        "into the serial terminal, and you should see them all echoed back \n"
-        "at once\n",
-        "Successfully read 90 characters. Now, wait several seconds \n"
-        "without typing. The UART device should print that it read 0 \n"
-        "characters from the device.\n",
-        "The UART device successfully read 0 characters\n",
-        "This is the final UART test. It verifies the write timeout. This\n"
-        "message is delibrately very long. You should not see the end of \n"
-        "this message. The ending characters will be 'EEEE'. If you see a\n"
-        "second instance of those characters in this message, the test has\n"
-        "failed 'EEEE'\n",
-        "\nAll UART tests passed! The device will enter echo mode now.\n"
-        "It should echo all characters typed to the prompt.\n"};
     syserr_t err;
     uint8_t buf[READBUF_LEN];
     int len, count;
-    // Set system clock to 80MHz
-    err = clock_init(&clk_cfg);
-    if (err != SYS_OK) {
-        while (1)
-            ; // Spin
-    };
-    if (init_uart_gpio() != SYS_OK) {
-        while (1)
-            ; // Spin
-    }
     /**
      * Verify that the UART will not open with too low a baud rate
      */
@@ -201,5 +200,40 @@ int main() {
         while (1)
             ; // spin
     }
+    return;
+}
+
+int main() {
+    syserr_t err;
+    clock_cfg_t clk_cfg = CLOCK_DEFAULT_CONFIG;
+    // Set system clock to 80MHz
+    err = clock_init(&clk_cfg);
+    if (err != SYS_OK) {
+        while (1)
+            ; // Spin
+    }
+    err = init_uart_gpio();
+    if (err != SYS_OK) {
+        while (1)
+            ; // Spin
+    }
+    // /**
+    //  * First, test the UART driver without the RTOS running by calling the
+    //  * test function directly.
+    //  */
+    // test_func(NULL);
+    // // Close the UART driver to prepare for the RTOS
+    // err = UART_close(lpuart);
+    // if (err != SYS_OK) {
+    //     while (1)
+    //         ; // Spin
+    // }
+    // Setup the RTOS task and re-run the test
+    if (task_create(test_func, NULL, NULL) == NULL) {
+        while (1)
+            ; // Spin
+    }
+    // Start the RTOS
+    rtos_start();
     return SYS_OK;
 }

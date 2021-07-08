@@ -30,9 +30,10 @@ semaphore_t semaphore_create_binary();
  * and all tasks that pended before caller have been unblocked.
  * @param sem: semaphore to pend on
  * @param delay: max amount of time to pend on the semaphore before timeout (in
+ * @return SYS_OK if pend succeeded, or ERR_TIMEOUT if pend timed out
  * ms). Use value SYS_TIMEOUT_INF for infinite timeout
  */
-void semaphore_pend(semaphore_t sem, int delay);
+syserr_t semaphore_pend(semaphore_t sem, int delay);
 
 /**
  * posts to a semaphore (v), incrementing the value by one. does not block.

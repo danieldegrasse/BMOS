@@ -204,7 +204,7 @@ void task_yield() {
  * @param delay: number of milliseconds to delay for
  */
 void task_delay(uint32_t delay) {
-    if (!active_task) {
+    if (!active_task || delay == 0) {
         return;
     }
     // Assign delay value to task blockstate field

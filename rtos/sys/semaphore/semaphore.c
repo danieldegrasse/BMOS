@@ -83,9 +83,11 @@ semaphore_t semaphore_create_binary() {
  * and all tasks that pended before caller have been unblocked.
  * @param sem: semaphore to pend on
  * @param delay: max amount of time to pend on the semaphore before timeout (in
+ * @return SYS_OK if pend succeeded, or ERR_TIMEOUT if pend timed out
  * ms). Use value SYS_TIMEOUT_INF for infinite timeout
  */
-void semaphore_pend(semaphore_t sem, int delay) {
+syserr_t semaphore_pend(semaphore_t sem, int delay) {
+    syserr_t ret;
     semaphore_state_t *semaphore = (semaphore_state_t *)sem;
     waiting_task_t *queue_entry;
     // Get the semaphore lock
@@ -95,7 +97,7 @@ void semaphore_pend(semaphore_t sem, int delay) {
         semaphore->value--;
         // Release semaphore lock and return
         drop_semaphore_lock(semaphore);
-        return;
+        return SYS_OK;
     }
     /**
      * Semaphore value is 0. Wait for a post to the semaphore. Place this task
@@ -121,6 +123,7 @@ void semaphore_pend(semaphore_t sem, int delay) {
             if (semaphore->value > 0) {
                 semaphore->value--;
                 // We got a post to the semaphore. break out of loop.
+                ret = SYS_OK;
                 break;
             } else {
                 drop_semaphore_lock(semaphore);
@@ -133,6 +136,9 @@ void semaphore_pend(semaphore_t sem, int delay) {
         get_semaphore_lock(semaphore);
         if (semaphore->value > 0) {
             semaphore->value--;
+            ret = SYS_OK;
+        } else {
+            ret = ERR_TIMEOUT;
         }
         // Timeout has expired. Continue even if we did not get semaphore post
     }
@@ -146,6 +152,7 @@ void semaphore_pend(semaphore_t sem, int delay) {
     free(queue_entry);
     // Drop semaphore lock
     drop_semaphore_lock(semaphore);
+    return ret;
 }
 
 /**

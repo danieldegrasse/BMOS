@@ -213,6 +213,10 @@ int UART_read(UART_handle_t handle, uint8_t *buf, uint32_t len, syserr_t *err) {
     num_read = buf_readblock(&(((UART_status_t *)handle)->read_buf), buf, len);
     // reenable interrupts
     unmask_irq();
+    if (rtos_started()) {
+        // Pend on the read semaphore with no timeout to ensure it is 0
+        semaphore_pend(((UART_status_t *)handle)->read_sem, 0);
+    }
     timeout = (int)((UART_status_t *)handle)->cfg.UART_read_timeout;
     while (num_read < len && timeout != UART_TIMEOUT_NONE) {
         /**
@@ -228,10 +232,8 @@ int UART_read(UART_handle_t handle, uint8_t *buf, uint32_t len, syserr_t *err) {
                                    SYS_TIMEOUT_INF);
                 } else {
                     // Delay for timeout ms
-                    semaphore_pend(((UART_status_t *)handle)->read_sem,
-                                   timeout);
-                    if (buf_getsize(&(((UART_status_t *)handle)->read_buf)) ==
-                        0) {
+                    if (semaphore_pend(((UART_status_t *)handle)->read_sem,
+                                       timeout) != SYS_OK) {
                         // No data was read before timeout. Set timeout to none.
                         timeout = UART_TIMEOUT_NONE;
                     }
@@ -307,6 +309,10 @@ int UART_write(UART_handle_t handle, uint8_t *buf, uint32_t len,
         return -1;
     }
     timeout = uart->cfg.UART_write_timeout;
+    if (rtos_started()) {
+        // Pend on the write semaphore with no delay, to make sure it is 0
+        semaphore_pend(uart->write_sem, 0);
+    }
     while (num_written < len && timeout != UART_TIMEOUT_NONE) {
         // Wait for there to be space in the ringbuffer
         while (buf_getsize(&(uart->write_buf)) == UART_RINGBUF_SIZE &&
@@ -317,12 +323,8 @@ int UART_write(UART_handle_t handle, uint8_t *buf, uint32_t len,
                     semaphore_pend(uart->write_sem, SYS_TIMEOUT_INF);
                 } else {
                     // Delay for timeout ms
-                    semaphore_pend(uart->write_sem, timeout);
-                    if (buf_getsize(&(uart->write_buf)) == UART_RINGBUF_SIZE) {
-                        /**
-                         * No space available before timeout. Set timeout to
-                         * none.
-                         */
+                    if (semaphore_pend(uart->write_sem, timeout) != SYS_OK) {
+                        // Wait for space timed out. Set timeout to none.
                         timeout = UART_TIMEOUT_NONE;
                     }
                 }
@@ -353,8 +355,9 @@ int UART_write(UART_handle_t handle, uint8_t *buf, uint32_t len,
             if (timeout == UART_TIMEOUT_INF) {
                 semaphore_pend(uart->tx_sem, SYS_TIMEOUT_INF);
             } else {
-                semaphore_pend(uart->tx_sem, timeout);
-                timeout = UART_TIMEOUT_NONE; // Timeout expired
+                if (semaphore_pend(uart->tx_sem, timeout) != SYS_OK) {
+                    timeout = UART_TIMEOUT_NONE; // Timeout expired
+                }
             }
         } else {
             if (timeout != UART_TIMEOUT_INF) {
@@ -498,17 +501,18 @@ static void UART_transmit(UART_status_t *handle) {
         } else {
             handle->echo_char = '\0'; // Clears the echo character
         }
+        // Send by writing to the TDR register. Don't post to semaphore.
+        handle->regs->TDR = USART_TDR_TDR & data;
     } else {
         // Read a byte from the ring buffer and send it
-        if (buf_read(&(handle->write_buf), &data) != SYS_OK) {
-            return; // Do not write data if read from buffer failed
+        if (buf_read(&(handle->write_buf), &data) == SYS_OK) {
+            // Send by writing to the TDR register
+            handle->regs->TDR = USART_TDR_TDR & data;
+            if (rtos_started()) {
+                // Post to the write semaphore
+                semaphore_post(handle->write_sem);
+            }
         }
-    }
-    // Send by writing to the TDR register
-    handle->regs->TDR = USART_TDR_TDR & data;
-    if (rtos_started()) {
-        // Post to the write semaphore
-        semaphore_post(handle->write_sem);
     }
 }
 

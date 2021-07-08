@@ -223,8 +223,9 @@ static void get_semaphore_lock(semaphore_state_t *sem) {
      * retry
      */
     asm volatile(
-        "try_lock_%=:\n"        // Entry point for reading the lock value
+        "cpsid i\n"             // This code is critical, cannot be interrupted
         "mov r2, %[lock]\n"     // Save lock address. GCC likes to overwrite it
+        "try_lock_%=:\n"        // Entry point for reading the lock value
         "ldrexb r0, [r2]\n"     // Get lock value
         "cmp r0, %[UNLOCKED]\n" // Check if lock is open
         "it eq\n"
@@ -239,6 +240,7 @@ static void get_semaphore_lock(semaphore_state_t *sem) {
         "cmp r1, #0x0\n"        // Check to ensure strexb succeeded
         "it ne\n"
         "bne try_lock_%=\n" // strexb failed. Try to get lock again.
+        "cpsie i\n"         // exit critical section
         :
         : [ lock ] "r"(&(sem->lock)), [ LOCKED ] "i"(SEMAPHORE_LOCKED),
           [ UNLOCKED ] "i"(SEMAPHORE_UNLOCKED)
@@ -255,7 +257,8 @@ static void drop_semaphore_lock(semaphore_state_t *sem) {
      * Load semaphore lock using LDREXB. Check if lock is 0xFF, and if so drop
      * it. If not, spin the processor so user knowns there was an error
      */
-    asm volatile("mov r2, %[lock]\n" // Save lock address. GCC likes to
+    asm volatile("cpsid i\n" // This code is critical, cannot be interrupted
+                 "mov r2, %[lock]\n" // Save lock address. GCC likes to
                                      // overwrite it with -O2
                  "ldrexb r0, [r2]\n"
                  "spin_%=:\n"            // Offset to spin processor from
@@ -268,6 +271,7 @@ static void drop_semaphore_lock(semaphore_state_t *sem) {
                  "cmp r1, #0x0\n"        // Check if strexb succeeded
                  "it ne\n"
                  "bne try_drop_%=\n" // strexb failed, retry lock drop
+                 "cpsie i\n"         // exit critical section
                  :
                  : [ lock ] "p"(&(sem->lock)), [ LOCKED ] "i"(SEMAPHORE_LOCKED),
                    [ UNLOCKED ] "i"(SEMAPHORE_UNLOCKED)

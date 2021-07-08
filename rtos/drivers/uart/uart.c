@@ -199,6 +199,7 @@ UART_handle_t UART_open(UART_periph_t periph, UART_config_t *config,
  */
 int UART_read(UART_handle_t handle, uint8_t *buf, uint32_t len, syserr_t *err) {
     int num_read, timeout;
+    UART_status_t *uart = (UART_status_t *)handle;
     // Verify inputs
     if (handle == NULL || buf == NULL) {
         *err = ERR_BADPARAM;
@@ -210,30 +211,28 @@ int UART_read(UART_handle_t handle, uint8_t *buf, uint32_t len, syserr_t *err) {
      */
     mask_irq();
     // Now, attempt to read data from the input ring buffer
-    num_read = buf_readblock(&(((UART_status_t *)handle)->read_buf), buf, len);
+    num_read = buf_readblock(&(uart->read_buf), buf, len);
     // reenable interrupts
     unmask_irq();
     if (rtos_started()) {
         // Pend on the read semaphore with no timeout to ensure it is 0
-        semaphore_pend(((UART_status_t *)handle)->read_sem, 0);
+        semaphore_pend(uart->read_sem, 0);
     }
-    timeout = (int)((UART_status_t *)handle)->cfg.UART_read_timeout;
+    timeout = (int)uart->cfg.UART_read_timeout;
     while (num_read < len && timeout != UART_TIMEOUT_NONE) {
         /**
          * Wait for data to be available. For now, we will simply poll the
          * ringbuffer's size
          */
-        while (buf_getsize(&(((UART_status_t *)handle)->read_buf)) == 0 &&
+        while (buf_getsize(&(uart->read_buf)) == 0 &&
                timeout != UART_TIMEOUT_NONE) {
             if (rtos_started()) {
                 // Pend on the read semaphore until data is available
                 if (timeout == UART_TIMEOUT_INF) {
-                    semaphore_pend(((UART_status_t *)handle)->read_sem,
-                                   SYS_TIMEOUT_INF);
+                    semaphore_pend(uart->read_sem, SYS_TIMEOUT_INF);
                 } else {
                     // Delay for timeout ms
-                    if (semaphore_pend(((UART_status_t *)handle)->read_sem,
-                                       timeout) != SYS_OK) {
+                    if (semaphore_pend(uart->read_sem, timeout) != SYS_OK) {
                         // No data was read before timeout. Set timeout to none.
                         timeout = UART_TIMEOUT_NONE;
                     }
@@ -258,12 +257,12 @@ int UART_read(UART_handle_t handle, uint8_t *buf, uint32_t len, syserr_t *err) {
         }
         mask_irq();
         // Now, there is data available in the buffer. Read it.
-        num_read += buf_readblock(&(((UART_status_t *)handle)->read_buf),
-                                  buf + num_read, len - num_read);
+        num_read +=
+            buf_readblock(&(uart->read_buf), buf + num_read, len - num_read);
         unmask_irq();
     }
     if (timeout == UART_TIMEOUT_NONE &&
-        ((UART_status_t *)handle)->cfg.UART_read_timeout != UART_TIMEOUT_NONE) {
+        uart->cfg.UART_read_timeout != UART_TIMEOUT_NONE) {
         *err = ERR_TIMEOUT;
     }
     return num_read;

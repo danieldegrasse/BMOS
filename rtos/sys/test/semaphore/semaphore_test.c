@@ -1,6 +1,31 @@
 /**
  * @file semaphore_test.c
  * Test RTOS semaphore pending and posting
+ * When this test runs correctly, The foreground test should start and pend
+ * on the semaphore for 1500ms. Then, the foreground task should create a
+ * background task of lower priority. The foreground task should then pend
+ * on the semaphore with no timeout. At this point, the background task should
+ * run, enter into a 3000ms delay, and then post to the semaphore, which will
+ * wake the foreground task (instantly if preemption is enabled). The foreground
+ * test will then notify the user it woke from the semaphore pend, and pend
+ * again. This ping-pong process of the foreground task pending and the
+ * background task posting should continue indefinitely.
+ *
+ * Here is the expected output from LPUART1 (115200 baud, 8n1):
+ * Foreground task waiting on semaphore with timeout of 1500ms
+ * Foreground task correctly timed out from semaphore pend
+ * Foreground task running
+ * Foreground task pending on semaphore
+ * Foreground task woke from semaphore
+ * Foreground task running
+ * Foreground task pending on semaphore
+ * Foreground task woke from semaphore
+ * Foreground task running
+ * Foreground task pending on semaphore
+ * Foreground task woke from semaphore
+ * Foreground task running
+ * Foreground task pending on semaphore
+ * .... (this pend/post cycle will continue) ......
  */
 
 #include <stdio.h>
@@ -79,6 +104,18 @@ static void fg_task(void *arg) {
     if (semaphore_handle == NULL) {
         LOG_E(TAG, "Could not create semaphore");
     }
+    UART_write(
+        lpuart1,
+        (uint8_t
+             *)"Foreground task waiting on semaphore with timeout of 1500ms\n",
+        60, &err);
+    LOG_I(TAG, "Attempting to pend on semaphore with timeout of 1500ms");
+    semaphore_pend(semaphore_handle, 1500);
+    LOG_I(TAG, "Returned from pend with timeout");
+    UART_write(
+        lpuart1,
+        (uint8_t *)"Foreground task correctly timed out from semaphore pend\n",
+        56, &err);
     LOG_I(TAG, "Creating low priority background task");
     bg_taskconf.task_priority = DEFAULT_PRIORITY - 1;
     bg_taskconf.task_name = "Background Task";
@@ -99,7 +136,7 @@ static void fg_task(void *arg) {
             exit(err);
         }
         LOG_D(TAG, "Foreground task pending on semaphore");
-        semaphore_pend(semaphore_handle);
+        semaphore_pend(semaphore_handle, SYS_TIMEOUT_INF);
         UART_write(lpuart1, (uint8_t *)"Foreground task woke from semaphore\n",
                    36, &err);
         LOG_D(TAG, "Foreground task awoke from semaphore");
@@ -119,8 +156,8 @@ static void fg_task(void *arg) {
 static void bg_task(void *arg) {
     const char *TAG = "Background Task";
     while (1) {
-        LOG_I(TAG, "Task sleeping for 1000ms");
-        task_delay(1000);
+        LOG_I(TAG, "Task sleeping for 3000ms");
+        task_delay(3000);
         LOG_I(TAG, "Posting to semaphore");
         semaphore_post(semaphore_handle);
     }

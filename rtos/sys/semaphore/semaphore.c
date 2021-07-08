@@ -13,6 +13,7 @@
 
 #define SEMAPHORE_UNLOCKED 0x00
 #define SEMAPHORE_LOCKED 0xFF
+#define SEMAPHORE_TIMED_OUT -2
 
 /** Semaphore type */
 typedef enum {
@@ -30,8 +31,9 @@ typedef struct semaphore_state {
 
 /** Waiting task structure */
 typedef struct waiting_task {
-    task_handle_t task;
-    list_state_t list_state;
+    task_handle_t task;      /*!< Task handle */
+    int delay;               /*!< Delay task requested on semaphore pend */
+    list_state_t list_state; /*!< list state structure */
 } waiting_task_t;
 
 static const char *TAG = "semaphore.c";
@@ -80,36 +82,70 @@ semaphore_t semaphore_create_binary() {
  * task will be given lowest priority. blocks until semaphore value is nonzero
  * and all tasks that pended before caller have been unblocked.
  * @param sem: semaphore to pend on
+ * @param delay: max amount of time to pend on the semaphore before timeout (in
+ * ms). Use value SYS_TIMEOUT_INF for infinite timeout
  */
-void semaphore_pend(semaphore_t sem) {
+void semaphore_pend(semaphore_t sem, int delay) {
     semaphore_state_t *semaphore = (semaphore_state_t *)sem;
     waiting_task_t *queue_entry;
-    while (1) {
-        // Get the semaphore lock
+    // Get the semaphore lock
+    get_semaphore_lock(semaphore);
+    // Check semaphore value
+    if (semaphore->value > 0) {
+        semaphore->value--;
+        // Release semaphore lock and return
+        drop_semaphore_lock(semaphore);
+        return;
+    }
+    /**
+     * Semaphore value is 0. Wait for a post to the semaphore. Place this task
+     * into semaphore's queue
+     */
+    queue_entry = malloc(sizeof(waiting_task_t));
+    if (queue_entry == NULL) {
+        LOG_E(TAG, "Out of memory to allocate queue entry\n");
+        exit(ERR_NOMEM);
+    }
+    queue_entry->task = get_active_task();
+    queue_entry->delay = delay;
+    // Add queue entry to semaphore queue
+    semaphore->waiting_tasks = list_append(
+        semaphore->waiting_tasks, queue_entry, &(queue_entry->list_state));
+    // Drop semaphore lock
+    drop_semaphore_lock(semaphore);
+    if (delay == SYS_TIMEOUT_INF) {
+        // Block task without timeout, and try to get semaphore at every wakeup
+        while (1) {
+            block_active_task(BLOCK_SEMAPHORE);
+            get_semaphore_lock(semaphore);
+            if (semaphore->value > 0) {
+                semaphore->value--;
+                // We got a post to the semaphore. break out of loop.
+                break;
+            } else {
+                drop_semaphore_lock(semaphore);
+            }
+        }
+    } else {
+        // Block task with timeout
+        task_delay((uint32_t)delay);
+        // Try to get semaphore (we may have unblocked due to a post)
         get_semaphore_lock(semaphore);
-        // Check semaphore value
         if (semaphore->value > 0) {
             semaphore->value--;
-            // Release semaphore lock and return
-            drop_semaphore_lock(semaphore);
-            return;
-        } else {
-            // Place this task into semaphore's queue
-            queue_entry = malloc(sizeof(waiting_task_t));
-            if (queue_entry == NULL) {
-                LOG_E(TAG, "Out of memory to allocate queue entry\n");
-                exit(ERR_NOMEM);
-            }
-            queue_entry->task = get_active_task();
-            // Add queue entry to semaphore queue
-            semaphore->waiting_tasks =
-                list_append(semaphore->waiting_tasks, queue_entry,
-                            &(queue_entry->list_state));
-            // Drop semaphore lock
-            drop_semaphore_lock(semaphore);
-            block_active_task(BLOCK_SEMAPHORE);
         }
+        // Timeout has expired. Continue even if we did not get semaphore post
     }
+    /**
+     * At this point we either successfully pended on the semaphore or timed
+     * out. Remove the task from the waiting list.
+     */
+    semaphore->waiting_tasks =
+        list_remove(semaphore->waiting_tasks, &(queue_entry->list_state));
+    // Free queue entry
+    free(queue_entry);
+    // Drop semaphore lock
+    drop_semaphore_lock(semaphore);
 }
 
 /**
@@ -121,7 +157,6 @@ void semaphore_pend(semaphore_t sem) {
 void semaphore_post(semaphore_t sem) {
     semaphore_state_t *semaphore = (semaphore_state_t *)sem;
     waiting_task_t *runnable_queue_entry;
-    task_handle_t runnable_task;
     // Get the semaphore lock
     get_semaphore_lock(semaphore);
     if (semaphore->type == SEMAPHORE_BINARY && semaphore->value == 1) {
@@ -134,15 +169,15 @@ void semaphore_post(semaphore_t sem) {
     // If tasks are waiting, unblock one
     if (semaphore->waiting_tasks != NULL) {
         runnable_queue_entry = list_get_head(semaphore->waiting_tasks);
-        semaphore->waiting_tasks = list_remove(
-            semaphore->waiting_tasks, &(runnable_queue_entry->list_state));
-        runnable_task = runnable_queue_entry->task;
-        // Release memory for queue entry
-        free(runnable_queue_entry);
-        // Drop the semaphore lock
         drop_semaphore_lock(semaphore);
         // Mark the selected task as runnable
-        unblock_task(runnable_task, BLOCK_SEMAPHORE);
+        if (runnable_queue_entry->delay == SYS_TIMEOUT_INF) {
+            // Unblock the task normally.
+            unblock_task(runnable_queue_entry->task, BLOCK_SEMAPHORE);
+        } else {
+            // The task is in a delay block, clear the delay.
+            unblock_delayed_task(runnable_queue_entry->task);
+        }
         return;
     }
     // Drop the semaphore lock
@@ -183,18 +218,18 @@ static void get_semaphore_lock(semaphore_state_t *sem) {
     asm volatile(
         "try_lock_%=:\n"        // Entry point for reading the lock value
         "mov r2, %[lock]\n"     // Save lock address. GCC likes to overwrite it
-        "ldrexb r0, [r2]\n"       // Get lock value
+        "ldrexb r0, [r2]\n"     // Get lock value
         "cmp r0, %[UNLOCKED]\n" // Check if lock is open
         "it eq\n"
-        "beq take_lock_%=\n"  // Lock is open, take it
+        "beq take_lock_%=\n"    // Lock is open, take it
         "strexb r1, r0, [r2]\n" // Lock is closed. Release memory access.
-        "cmp r1, #0x0\n"      // Check to make sure strexb updated memory
+        "cmp r1, #0x0\n"        // Check to make sure strexb updated memory
         "it ne\n"
-        "bne try_lock_%=\n"   // If strexb failed, try to get lock again
-        "take_lock_%=:\n"     // Section for taking the lock
-        "mov r0, %[LOCKED]\n" // Set r0 to the locked value
+        "bne try_lock_%=\n"     // If strexb failed, try to get lock again
+        "take_lock_%=:\n"       // Section for taking the lock
+        "mov r0, %[LOCKED]\n"   // Set r0 to the locked value
         "strexb r1, r0, [r2]\n" // Try to store new locked value
-        "cmp r1, #0x0\n"      // Check to ensure strexb succeeded
+        "cmp r1, #0x0\n"        // Check to ensure strexb succeeded
         "it ne\n"
         "bne try_lock_%=\n" // strexb failed. Try to get lock again.
         :
@@ -213,21 +248,21 @@ static void drop_semaphore_lock(semaphore_state_t *sem) {
      * Load semaphore lock using LDREXB. Check if lock is 0xFF, and if so drop
      * it. If not, spin the processor so user knowns there was an error
      */
-    asm volatile(
-        "mov r2, %[lock]\n" // Save lock address. GCC likes to overwrite it with -O2
-        "ldrexb r0, [r2]\n"
-        "spin_%=:\n"            // Offset to spin processor from
-        "cmp r0, %[UNLOCKED]\n" // Check if lock is unlocked
-        "it eq\n"
-        "beq spin_%=\n" // Spin here, lock is unlocked
-        "mov r0, %[UNLOCKED]\n"
-        "try_drop_%=:\n"
-        "strexb r1, r0, [r2]\n" // Set lock as unlocked
-        "cmp r1, #0x0\n"        // Check if strexb succeeded
-        "it ne\n"
-        "bne try_drop_%=\n" // strexb failed, retry lock drop
-        :
-        : [ lock ] "p"(&(sem->lock)), [ LOCKED ] "i"(SEMAPHORE_LOCKED),
-          [ UNLOCKED ] "i"(SEMAPHORE_UNLOCKED)
-        : "r0", "r1");
+    asm volatile("mov r2, %[lock]\n" // Save lock address. GCC likes to
+                                     // overwrite it with -O2
+                 "ldrexb r0, [r2]\n"
+                 "spin_%=:\n"            // Offset to spin processor from
+                 "cmp r0, %[UNLOCKED]\n" // Check if lock is unlocked
+                 "it eq\n"
+                 "beq spin_%=\n" // Spin here, lock is unlocked
+                 "mov r0, %[UNLOCKED]\n"
+                 "try_drop_%=:\n"
+                 "strexb r1, r0, [r2]\n" // Set lock as unlocked
+                 "cmp r1, #0x0\n"        // Check if strexb succeeded
+                 "it ne\n"
+                 "bne try_drop_%=\n" // strexb failed, retry lock drop
+                 :
+                 : [ lock ] "p"(&(sem->lock)), [ LOCKED ] "i"(SEMAPHORE_LOCKED),
+                   [ UNLOCKED ] "i"(SEMAPHORE_UNLOCKED)
+                 : "r0", "r1");
 }

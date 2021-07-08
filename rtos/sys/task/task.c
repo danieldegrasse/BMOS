@@ -256,6 +256,12 @@ void task_destroy(task_handle_t task) {
 task_handle_t get_active_task() { return (task_handle_t)active_task; }
 
 /**
+ * Returns if the RTOS has started.
+ * @return boolean indicating RTOS status
+ */
+bool rtos_started() { return active_task != NULL; }
+
+/**
  * Blocks the running task, and switches to a new runnable one. This function
  * does not return. Used by system drivers.
  * @param reason: reason for task block
@@ -293,6 +299,8 @@ void unblock_task(task_handle_t task, block_reason_t reason) {
     if (tsk->state != TASK_BLOCKED || tsk->blockstate != reason) {
         return;
     }
+    // Disable interrupts
+    mask_irq();
     // Set task as ready
     tsk->state = TASK_READY;
     tsk->blockstate = BLOCK_NONE;
@@ -304,9 +312,43 @@ void unblock_task(task_handle_t task, block_reason_t reason) {
     // Check to see if this task is higher priority than the active one.
     if (tsk->priority > active_task->priority) {
         // Force a context switch
-        set_pendsv();
+        task_yield();
     }
 #endif
+    // Unmask interrupts
+    unmask_irq();
+}
+
+/**
+ * Unblocks a delayed task, cancelling its delay. Used by system drivers.
+ * Task will not run immediately unless it has higher priority than running task
+ * and preemption is enabled.
+ */
+void unblock_delayed_task(task_handle_t task) {
+    task_status_t *tsk = (task_status_t *)task;
+    // Check parameters
+    if (tsk == NULL) {
+        return;
+    }
+    // Mask interrupts here
+    mask_irq();
+    // Set task as ready
+    tsk->state = TASK_READY;
+    tsk->blockstate = BLOCK_NONE;
+    // Remove list from delayed list
+    delayed_tasks = list_remove(delayed_tasks, &(tsk->list_state));
+    // Add task to correct ready list
+    ready_tasks[tsk->priority] =
+        list_append(ready_tasks[tsk->priority], tsk, &(tsk->list_state));
+#if SYS_USE_PREEMPTION == PREEMPTION_ENABLED
+    // Check to see if this task is higher priority than the active one.
+    if (tsk->priority > active_task->priority) {
+        // Force a context switch
+        task_yield();
+    }
+#endif
+    // Unmask interrupts
+    unmask_irq();
 }
 
 /**
@@ -398,10 +440,6 @@ __attribute__((naked)) void PendSVHandler() {
  * Handler mode, as the PendSV isr
  */
 void SysTickHandler() {
-    /**
-     * TODO: check if preemption should occur (if enabled), and what tasks
-     * are runnable
-     */
     task_status_t *ready_task;
     // Decrement the delay value for each task
     list_iterate(delayed_tasks, decrement_task_delay);

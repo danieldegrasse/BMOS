@@ -10,6 +10,8 @@
 #include <drivers/device/device.h>
 #include <sys/err.h>
 #include <sys/isr/isr.h>
+#include <sys/semaphore/semaphore.h>
+#include <sys/task/task.h>
 #include <util/bitmask.h>
 #include <util/logging/logging.h>
 #include <util/ringbuf/ringbuf.h>
@@ -36,6 +38,9 @@ typedef struct {
     RingBuf_t read_buf;      /*!< UART read ring buffer (incoming data)*/
     UART_periph_t periph_id; /*!< Identifies the peripheral handle references */
     char echo_char;          /*!< Next echo character to send on TX line */
+    semaphore_t write_sem;   /*!< Posted to when space exists in write buffer */
+    semaphore_t read_sem;    /*!< Posted to when data exists in read buffer */
+    semaphore_t tx_sem; /*!< Posted to when transmission completes */
 } UART_status_t;
 
 #define UART_RINGBUF_SIZE 80
@@ -88,6 +93,23 @@ UART_handle_t UART_open(UART_periph_t periph, UART_config_t *config,
     // Setup read and write buffers
     buf_init(&handle->read_buf, UART_RBUFFS[periph], UART_RINGBUF_SIZE);
     buf_init(&handle->write_buf, UART_WBUFFS[periph], UART_RINGBUF_SIZE);
+    // Setup semaphores
+    if (rtos_started()) {
+        handle->write_sem = NULL;
+        handle->write_sem = semaphore_create_binary();
+        if (handle->write_sem == NULL) {
+            *err = ERR_NOMEM;
+            UART_close(handle);
+            return NULL;
+        }
+        handle->read_sem = NULL;
+        handle->read_sem = semaphore_create_binary();
+        if (handle->read_sem == NULL) {
+            *err = ERR_NOMEM;
+            UART_close(handle);
+            return NULL;
+        }
+    }
     /**
      * Record the UART peripheral address into the config structure
      * Here we also enable the clock for the relevant UART device,
@@ -306,12 +328,38 @@ int UART_write(UART_handle_t handle, uint8_t *buf, uint32_t len,
  * @return SYS_OK on success, or error value otherwise
  */
 syserr_t UART_close(UART_handle_t handle) {
+    syserr_t err;
     UART_status_t *uart = (UART_status_t *)handle;
     if (uart->state != UART_dev_open) {
         return ERR_BADPARAM;
     }
     while (uart->tx_active) {
         // Wait for uart device to stop transmitting
+        if (rtos_started()) {
+            // Wait on the transmission complete semaphore
+            semaphore_pend(uart->tx_sem, SYS_TIMEOUT_INF);
+        }
+    }
+    // Free uart semaphores
+    if (rtos_started()) {
+        if (uart->write_sem) {
+            err = semaphore_destroy(uart->write_sem);
+            if (err != SYS_OK) {
+                return err;
+            }
+        }
+        if (uart->read_sem) {
+            err = semaphore_destroy(uart->read_sem);
+            if (err != SYS_OK) {
+                return err;
+            }
+        }
+        if (uart->tx_sem) {
+            err = semaphore_destroy(uart->tx_sem);
+            if (err != SYS_OK) {
+                return err;
+            }
+        }
     }
     switch (uart->periph_id) {
     case LPUART_1:

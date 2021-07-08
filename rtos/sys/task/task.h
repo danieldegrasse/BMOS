@@ -7,6 +7,7 @@
 #define TASK_H
 
 #include <limits.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <sys/err.h>
 
@@ -113,6 +114,19 @@ void block_active_task(block_reason_t reason);
  * @param reason: reason task was blocked.
  */
 void unblock_task(task_handle_t task, block_reason_t reason);
+
+/**
+ * Unblocks a delayed task, cancelling its delay. Used by system drivers.
+ * Task will not run immediately unless it has higher priority than running task
+ * and preemption is enabled.
+ */
+void unblock_delayed_task(task_handle_t task);
+
+/**
+ * Returns if the RTOS has started.
+ * @return boolean indicating RTOS status
+ */
+bool rtos_started();
 
 /**
  * System context switch handler. Stores core registers for current

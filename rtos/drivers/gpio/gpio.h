@@ -9,37 +9,93 @@
 #include <sys/err.h>
 
 /**
- * Available GPIO Ports
+ * GPIO pin number and port defs. Masked together to form pin definitions
  */
-typedef enum GPIO_port {
-    GPIO_PORT_A,
-    GPIO_PORT_B,
-    GPIO_PORT_C,
-    GPIO_PORT_D,
-    GPIO_PORT_E,
-    GPIO_PORT_H,
-} GPIO_port_t;
+#define PORTSHIFT 4
+#define PORTMASK (0xFU << PORTSHIFT)
+#define PORT_A (1U << PORTSHIFT)
+#define PORT_B (2U << PORTSHIFT)
+#define PORT_C (3U << PORTSHIFT)
+#define PORT_D (4U << PORTSHIFT)
+#define PORT_E (5U << PORTSHIFT)
+#define PORT_H (6U << PORTSHIFT)
+
+#define PINMASK 0xFU
+
+#define PIN_0 0U
+#define PIN_1 1U
+#define PIN_2 2U
+#define PIN_3 3U
+#define PIN_4 4U
+#define PIN_5 5U
+#define PIN_6 6U
+#define PIN_7 7U
+#define PIN_8 8U
+#define PIN_9 9U
+#define PIN_9 9U
+#define PIN_10 10U
+#define PIN_11 11U
+#define PIN_12 12U
+#define PIN_13 13U
+#define PIN_14 14U
+#define PIN_15 15U
 
 /**
- * GPIO Pins
+ * GPIO Pins defined on the LQFP64 STM32L433RC package
  */
 typedef enum GPIO_pin {
-    GPIO_PIN_0 = 0,
-    GPIO_PIN_1 = 1,
-    GPIO_PIN_2 = 2,
-    GPIO_PIN_3 = 3,
-    GPIO_PIN_4 = 4,
-    GPIO_PIN_5 = 5,
-    GPIO_PIN_6 = 6,
-    GPIO_PIN_7 = 7,
-    GPIO_PIN_8 = 8,
-    GPIO_PIN_9 = 9,
-    GPIO_PIN_10 = 10,
-    GPIO_PIN_11 = 11,
-    GPIO_PIN_12 = 12,
-    GPIO_PIN_13 = 13,
-    GPIO_PIN_14 = 14,
-    GPIO_PIN_15 = 15,
+    GPIO_PA0 = PORT_A | PIN_0,
+    GPIO_PA1 = PORT_A | PIN_1,
+    GPIO_PA2 = PORT_A | PIN_2,
+    GPIO_PA3 = PORT_A | PIN_3,
+    GPIO_PA4 = PORT_A | PIN_4,
+    GPIO_PA5 = PORT_A | PIN_5,
+    GPIO_PA6 = PORT_A | PIN_6,
+    GPIO_PA7 = PORT_A | PIN_7,
+    GPIO_PA8 = PORT_A | PIN_8,
+    GPIO_PA9 = PORT_A | PIN_9,
+    GPIO_PA10 = PORT_A | PIN_10,
+    GPIO_PA11 = PORT_A | PIN_11,
+    GPIO_PA12 = PORT_A | PIN_12,
+    GPIO_PA13 = PORT_A | PIN_13,
+    GPIO_PA14 = PORT_A | PIN_14,
+    GPIO_PA15 = PORT_A | PIN_15,
+    GPIO_PB0 = PORT_B | PIN_0,
+    GPIO_PB1 = PORT_B | PIN_1,
+    GPIO_PB2 = PORT_B | PIN_2,
+    GPIO_PB3 = PORT_B | PIN_3,
+    GPIO_PB4 = PORT_B | PIN_4,
+    GPIO_PB5 = PORT_B | PIN_5,
+    GPIO_PB6 = PORT_B | PIN_6,
+    GPIO_PB7 = PORT_B | PIN_7,
+    GPIO_PB8 = PORT_B | PIN_8,
+    GPIO_PB9 = PORT_B | PIN_9,
+    GPIO_PB10 = PORT_B | PIN_10,
+    GPIO_PB11 = PORT_B | PIN_11,
+    GPIO_PB12 = PORT_B | PIN_12,
+    GPIO_PB13 = PORT_B | PIN_13,
+    GPIO_PB14 = PORT_B | PIN_14,
+    GPIO_PB15 = PORT_B | PIN_15,
+    GPIO_PC0 = PORT_C | PIN_0,
+    GPIO_PC1 = PORT_C | PIN_1,
+    GPIO_PC2 = PORT_C | PIN_2,
+    GPIO_PC3 = PORT_C | PIN_3,
+    GPIO_PC4 = PORT_C | PIN_4,
+    GPIO_PC5 = PORT_C | PIN_5,
+    GPIO_PC6 = PORT_C | PIN_6,
+    GPIO_PC7 = PORT_C | PIN_7,
+    GPIO_PC8 = PORT_C | PIN_8,
+    GPIO_PC9 = PORT_C | PIN_9,
+    GPIO_PC10 = PORT_C | PIN_10,
+    GPIO_PC11 = PORT_C | PIN_11,
+    GPIO_PC12 = PORT_C | PIN_12,
+    GPIO_PC13 = PORT_C | PIN_13,
+    GPIO_PC14 = PORT_C | PIN_14, /*!< OSC32_IN */
+    GPIO_PC15 = PORT_C | PIN_15, /*!< OSC32_OUT */
+    GPIO_PD2 = PORT_D | PIN_2,
+    GPIO_PH0 = PORT_H | PIN_0, /*!< OSC_IN*/
+    GPIO_PH1 = PORT_H | PIN_1, /*!< OSC_OUT*/
+    GPIO_PH3 = PORT_H | PIN_3, /*!< B00T0 */
 } GPIO_pin_t;
 
 /**
@@ -132,26 +188,23 @@ typedef struct {
 
 /**
  * Configure a GPIO port for use with driver
- * @param port: GPIO port to use
  * @param pin: GPIO pin to configure
  * @param config: GPIO configuration structure
  */
-syserr_t GPIO_config(GPIO_port_t port, GPIO_pin_t pin, GPIO_config_t *config);
+syserr_t GPIO_config(GPIO_pin_t pin, GPIO_config_t *config);
 
 /**
  * Write a voltage level (high or low) to a GPIO pin
- * @param port: GPIO Port pin is on
  * @param pin: pin to set
  * @param lvl: GPIO level to set
  */
-syserr_t GPIO_write(GPIO_port_t port, GPIO_pin_t pin, GPIO_level_t lvl);
+syserr_t GPIO_write(GPIO_pin_t pin, GPIO_level_t lvl);
 
 /**
  * Read the digital voltage level from a pin
- * @param port: GPIO Port pin is on
  * @param pin: pin to set
  * @return GPIO pin level
  */
-GPIO_level_t GPIO_read(GPIO_port_t port, GPIO_pin_t pin);
+GPIO_level_t GPIO_read(GPIO_pin_t pin);
 
 #endif

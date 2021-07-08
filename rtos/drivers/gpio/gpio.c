@@ -6,14 +6,15 @@
 
 /**
  * Configure a GPIO port for use with driver
- * @param port: GPIO port to use
  * @param pin: GPIO pin to configure
  * @param config: GPIO configuration structure
  */
-syserr_t GPIO_config(GPIO_port_t port, GPIO_pin_t pin, GPIO_config_t *config) {
+syserr_t GPIO_config(GPIO_pin_t pin, GPIO_config_t *config) {
     // Begin by converting port into base register
     GPIO_TypeDef *periph;
     __IO uint32_t *af_sel;
+    uint32_t port = pin & PORTMASK;
+    pin &= PINMASK;            // Mask out the port portion of pin defintion
     uint32_t shift = pin << 1; // 2 times value of pin
     /**
      * In this switch statement, we will also verify that the relevant
@@ -21,28 +22,28 @@ syserr_t GPIO_config(GPIO_port_t port, GPIO_pin_t pin, GPIO_config_t *config) {
      * registers will not accept writes
      */
     switch (port) {
-    case GPIO_PORT_A:
+    case PORT_A:
         // Enable GPIOA
         SETBITS(RCC->AHB2ENR, RCC_AHB2ENR_GPIOAEN);
         periph = GPIOA;
         break;
-    case GPIO_PORT_B:
+    case PORT_B:
         SETBITS(RCC->AHB2ENR, RCC_AHB2ENR_GPIOBEN);
         periph = GPIOB;
         break;
-    case GPIO_PORT_C:
+    case PORT_C:
         SETBITS(RCC->AHB2ENR, RCC_AHB2ENR_GPIOCEN);
         periph = GPIOC;
         break;
-    case GPIO_PORT_D:
+    case PORT_D:
         SETBITS(RCC->AHB2ENR, RCC_AHB2ENR_GPIODEN);
         periph = GPIOD;
         break;
-    case GPIO_PORT_E:
+    case PORT_E:
         SETBITS(RCC->AHB2ENR, RCC_AHB2ENR_GPIOEEN);
         periph = GPIOE;
         break;
-    case GPIO_PORT_H:
+    case PORT_H:
         SETBITS(RCC->AHB2ENR, RCC_AHB2ENR_GPIOHEN);
         periph = GPIOH;
         break;
@@ -188,31 +189,32 @@ syserr_t GPIO_config(GPIO_port_t port, GPIO_pin_t pin, GPIO_config_t *config) {
 
 /**
  * Write a voltage level (high or low) to a GPIO pin
- * @param port: GPIO Port pin is on
  * @param pin: pin to set
  * @param lvl: GPIO level to set
  */
-syserr_t GPIO_write(GPIO_port_t port, GPIO_pin_t pin, GPIO_level_t lvl) {
+syserr_t GPIO_write(GPIO_pin_t pin, GPIO_level_t lvl) {
     // Begin by converting port into base register
     GPIO_TypeDef *periph;
+    uint32_t port = pin & PORTMASK;
+    pin &= PINMASK; // Mask out port definition from pin
     uint32_t shift = pin;
     switch (port) {
-    case GPIO_PORT_A:
+    case PORT_A:
         periph = GPIOA;
         break;
-    case GPIO_PORT_B:
+    case PORT_B:
         periph = GPIOB;
         break;
-    case GPIO_PORT_C:
+    case PORT_C:
         periph = GPIOC;
         break;
-    case GPIO_PORT_D:
+    case PORT_D:
         periph = GPIOD;
         break;
-    case GPIO_PORT_E:
+    case PORT_E:
         periph = GPIOE;
         break;
-    case GPIO_PORT_H:
+    case PORT_H:
         periph = GPIOH;
         break;
     default:
@@ -230,30 +232,31 @@ syserr_t GPIO_write(GPIO_port_t port, GPIO_pin_t pin, GPIO_level_t lvl) {
 
 /**
  * Read the digital voltage level from a pin
- * @param port: GPIO Port pin is on
  * @param pin: pin to set
  * @return GPIO pin level
  */
-GPIO_level_t GPIO_read(GPIO_port_t port, GPIO_pin_t pin) {
+GPIO_level_t GPIO_read(GPIO_pin_t pin) {
     // Begin by converting port into base register
+    uint32_t port = pin & PORTMASK;
+    pin &= PINMASK; // Mask out port from pin
     GPIO_TypeDef *periph;
     switch (port) {
-    case GPIO_PORT_A:
+    case PORT_A:
         periph = GPIOA;
         break;
-    case GPIO_PORT_B:
+    case PORT_B:
         periph = GPIOB;
         break;
-    case GPIO_PORT_C:
+    case PORT_C:
         periph = GPIOC;
         break;
-    case GPIO_PORT_D:
+    case PORT_D:
         periph = GPIOD;
         break;
-    case GPIO_PORT_E:
+    case PORT_E:
         periph = GPIOE;
         break;
-    case GPIO_PORT_H:
+    case PORT_H:
         periph = GPIOH;
         break;
     default:

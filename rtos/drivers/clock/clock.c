@@ -15,7 +15,7 @@
  * to propigate
  */
 #define REG_VERIFY_TIMEOUT                                                     \
-    150 // How many times to check register before timeout
+    500 // How many times to check register before timeout
 
 // Static variables to record current clock frequencies and states
 static sysclock_src_t system_clk_src = CLK_MSI; // Default clock is MSI
@@ -567,7 +567,8 @@ static syserr_t update_flash_ws(uint64_t new_freq) {
  * @param msk: Mask to apply to register
  * @param expect: expected value for register
  */
-static inline syserr_t verify_reg(uint32_t reg, uint32_t msk, uint32_t expect) {
+static inline syserr_t verify_reg(volatile uint32_t reg, uint32_t msk,
+                                  uint32_t expect) {
     int timeout = REG_VERIFY_TIMEOUT;
     while (timeout--) {
         if (READBITS(reg, msk) == expect) {
@@ -575,5 +576,9 @@ static inline syserr_t verify_reg(uint32_t reg, uint32_t msk, uint32_t expect) {
         }
     }
     // Timeout expired
-    return ERR_DEVICE;
+    if (timeout == 0) {
+        return ERR_DEVICE;
+    } else {
+        return SYS_OK;
+    }
 }

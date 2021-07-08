@@ -145,12 +145,12 @@ static void lpuart_init(void) {
     uart_pincofig.output_speed = GPIO_speed_vhigh;
     uart_pincofig.pullup_pulldown = GPIO_pullup;
     // PA2 is TX pin
-    ret = GPIO_config(GPIO_PORT_A, GPIO_PIN_2, &uart_pincofig);
+    ret = GPIO_config(GPIO_PA2, &uart_pincofig);
     if (ret != SYS_OK) {
         while (1)
             ; // spin
     }
-    ret = GPIO_config(GPIO_PORT_A, GPIO_PIN_3, &uart_pincofig);
+    ret = GPIO_config(GPIO_PA3, &uart_pincofig);
     if (ret != SYS_OK) {
         while (1)
             ; // spin

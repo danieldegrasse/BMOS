@@ -25,11 +25,11 @@ syserr_t gpio_init() {
     // button should be input
     btn_cfg.mode = GPIO_mode_input;
     // configure both GPIOs
-    ret = GPIO_config(GPIO_PORT_B, GPIO_PIN_13, &led_cfg);
+    ret = GPIO_config(GPIO_PB13, &led_cfg);
     if (ret != SYS_OK) {
         return ret;
     }
-    ret = GPIO_config(GPIO_PORT_C, GPIO_PIN_13, &btn_cfg);
+    ret = GPIO_config(GPIO_PC13, &btn_cfg);
     if (ret != SYS_OK) {
         return ret;
     }
@@ -44,13 +44,13 @@ int main() {
     }
     while (1) {
         // Illuminate Led D4
-        GPIO_write(GPIO_PORT_B, GPIO_PIN_13, GPIO_HIGH);
+        GPIO_write(GPIO_PB13, GPIO_HIGH);
         // Delay
         for (i = 0; i < delay; i++);
         // Turn the LED off
-        GPIO_write(GPIO_PORT_B, GPIO_PIN_13, GPIO_LOW);
+        GPIO_write(GPIO_PB13, GPIO_LOW);
         for (i = 0; i < delay; i++);
-        if (GPIO_read(GPIO_PORT_C, GPIO_PIN_13) == GPIO_HIGH) {
+        if (GPIO_read(GPIO_PC13) == GPIO_HIGH) {
             // User button B1 is pressed. Change delay.
             delay = 50000;
         } else {

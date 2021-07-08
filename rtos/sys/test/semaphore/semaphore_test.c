@@ -67,12 +67,12 @@ static void init_lpuart1() {
     gpio_config.alternate_func = GPIO_af8;
     gpio_config.output_speed = GPIO_speed_vhigh;
     gpio_config.pullup_pulldown = GPIO_pullup;
-    err = GPIO_config(GPIO_PORT_A, GPIO_PIN_2, &gpio_config);
+    err = GPIO_config(GPIO_PA2, &gpio_config);
     if (err != SYS_OK) {
         LOG_E(TAG, "Could not init GPIO A2");
         exit(err);
     }
-    err = GPIO_config(GPIO_PORT_A, GPIO_PIN_3, &gpio_config);
+    err = GPIO_config(GPIO_PA3, &gpio_config);
     if (err != SYS_OK) {
         LOG_E(TAG, "Could not init GPIO A3");
         exit(err);

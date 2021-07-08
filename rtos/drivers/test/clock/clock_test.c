@@ -36,12 +36,12 @@
  */
 void blink_led_delay() {
     // Turn on user LED
-    GPIO_write(GPIO_PORT_B, GPIO_PIN_13, GPIO_HIGH);
+    GPIO_write(GPIO_PB13, GPIO_HIGH);
     for (volatile int i = 0; i < DELAY; i++) {
         // Delay
     }
     // Turn off user LED
-    GPIO_write(GPIO_PORT_B, GPIO_PIN_13, GPIO_LOW);
+    GPIO_write(GPIO_PB13, GPIO_LOW);
     for (volatile int i = 0; i < DELAY; i++) {
         // Delay
     }
@@ -65,7 +65,7 @@ int main() {
             ;
     }
     // Enable LED D4
-    GPIO_config(GPIO_PORT_B, GPIO_PIN_13, &led_cfg);
+    GPIO_config(GPIO_PB13, &led_cfg);
     while (cycles--) {
         blink_led_delay();
     }
@@ -90,10 +90,10 @@ int main() {
     cycles = CYCLES;
     while (cycles--) {
         // Turn on user LED
-        GPIO_write(GPIO_PORT_B, GPIO_PIN_13, GPIO_HIGH);
+        GPIO_write(GPIO_PB13, GPIO_HIGH);
         blocking_delay_ms(1000);
         // Turn off user LED
-        GPIO_write(GPIO_PORT_B, GPIO_PIN_13, GPIO_LOW);
+        GPIO_write(GPIO_PB13, GPIO_LOW);
         blocking_delay_ms(1000);
     }
     /**
@@ -144,10 +144,10 @@ int main() {
     cycles = CYCLES;
     while (cycles--) {
         // Turn on user LED
-        GPIO_write(GPIO_PORT_B, GPIO_PIN_13, GPIO_HIGH);
+        GPIO_write(GPIO_PB13, GPIO_HIGH);
         blocking_delay_ms(10000);
         // Turn off user LED
-        GPIO_write(GPIO_PORT_B, GPIO_PIN_13, GPIO_LOW);
+        GPIO_write(GPIO_PB13, GPIO_LOW);
         blocking_delay_ms(10000);
     }
     while (1)

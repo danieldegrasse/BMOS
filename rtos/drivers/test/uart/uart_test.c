@@ -30,12 +30,12 @@ syserr_t init_uart_gpio() {
     uart_gpio.pullup_pulldown = GPIO_pullup; // UART is idle high
     uart_gpio.output_speed = GPIO_speed_vhigh;
     // TX pin (pullup)
-    err = GPIO_config(GPIO_PORT_A, GPIO_PIN_2, &uart_gpio);
+    err = GPIO_config(GPIO_PA2, &uart_gpio);
     if (err != SYS_OK) {
         return err;
     }
     // RX pin (pullup)
-    GPIO_config(GPIO_PORT_A, GPIO_PIN_3, &uart_gpio);
+    GPIO_config(GPIO_PA3, &uart_gpio);
     if (err != SYS_OK) {
         return err;
     }
@@ -144,7 +144,7 @@ void test_func(void *arg) {
             ; // Spin
     }
     lpuart_config.UART_read_timeout = 2000;
-    lpuart_config.UART_write_timeout = 10;
+    lpuart_config.UART_write_timeout = 4;
     lpuart = UART_open(LPUART_1, &lpuart_config, &err);
     if (lpuart == NULL || err != SYS_OK) {
         while (1)
@@ -217,17 +217,17 @@ int main() {
         while (1)
             ; // Spin
     }
-    // /**
-    //  * First, test the UART driver without the RTOS running by calling the
-    //  * test function directly.
-    //  */
-    // test_func(NULL);
-    // // Close the UART driver to prepare for the RTOS
-    // err = UART_close(lpuart);
-    // if (err != SYS_OK) {
-    //     while (1)
-    //         ; // Spin
-    // }
+    /**
+     * First, test the UART driver without the RTOS running by calling the
+     * test function directly.
+     */
+    test_func(NULL);
+    // Close the UART driver to prepare for the RTOS
+    err = UART_close(lpuart);
+    if (err != SYS_OK) {
+        while (1)
+            ; // Spin
+    }
     // Setup the RTOS task and re-run the test
     if (task_create(test_func, NULL, NULL) == NULL) {
         while (1)

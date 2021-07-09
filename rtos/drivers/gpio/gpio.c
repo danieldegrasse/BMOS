@@ -2,7 +2,14 @@
 
 #include "gpio.h"
 #include <drivers/device/device.h>
+#include <sys/isr/isr.h>
 #include <util/bitmask.h>
+
+/** GPIO interrupt handler array */
+static void (*gpio_interrupt_handlers[16])(void) = {0};
+
+// Static functions
+static void GPIO_isr(void);
 
 /**
  * Configure a GPIO port for use with driver
@@ -232,8 +239,8 @@ syserr_t GPIO_write(GPIO_pin_t pin, GPIO_level_t lvl) {
 
 /**
  * Read the digital voltage level from a pin
- * @param pin: pin to set
- * @return GPIO pin level
+ * @param pin : pin to set
+ * @ return GPIO pin level
  */
 GPIO_level_t GPIO_read(GPIO_pin_t pin) {
     // Begin by converting port into base register
@@ -267,4 +274,430 @@ GPIO_level_t GPIO_read(GPIO_pin_t pin) {
     } else {
         return GPIO_LOW;
     }
+}
+
+/**
+ * Enable interrupts on a GPIO pin
+ * @param pin: pin to enable interrupts on
+ * @param trigger: either GPIO_trig_rising, GPIO_trig_falling, or GPIO_trig_both
+ * @param callback: callback to run. This function will be called from an
+ * interrupt context.
+ * @return SYS_OK on success, or ERR_INUSE if another GPIO pin is using the
+ * interrupt line (GPIO pins are multipled accross 16 lines)
+ */
+syserr_t GPIO_interrupt_enable(GPIO_pin_t pin, GPIO_trigger_t trigger,
+                               void (*callback)(void)) {
+    /**
+     * The pin number is all that really matters for the EXTI controller,
+     * as gpio pins are multiplexed by pin number (PA1, PB1, PC1, PD1, and PE1
+     * are grouped for example)
+     */
+    uint32_t port = pin & PORTMASK;
+    uint32_t pin_value = pin & PINMASK;
+    uint32_t interrupt_vect;
+    uint32_t mask, regidx, value;
+    switch (pin_value) {
+    case PIN_0:
+        mask = SYSCFG_EXTICR1_EXTI0_Msk;
+        interrupt_vect = EXTI0_IRQn;
+        regidx = 0;
+        switch (port) {
+        case PORT_A:
+            value = SYSCFG_EXTICR1_EXTI0_PA;
+            break;
+        case PORT_B:
+            value = SYSCFG_EXTICR1_EXTI0_PB;
+            break;
+        case PORT_C:
+            value = SYSCFG_EXTICR1_EXTI0_PC;
+            break;
+        case PORT_D:
+            value = SYSCFG_EXTICR1_EXTI0_PD;
+            break;
+        case PORT_E:
+            value = SYSCFG_EXTICR1_EXTI0_PE;
+            break;
+        case PORT_H:
+            value = SYSCFG_EXTICR1_EXTI0_PH;
+            break;
+        }
+        break;
+    case PIN_1:
+        mask = SYSCFG_EXTICR1_EXTI1_Msk;
+        interrupt_vect = EXTI1_IRQn;
+        regidx = 0;
+        switch (port) {
+        case PORT_A:
+            value = SYSCFG_EXTICR1_EXTI1_PA;
+            break;
+        case PORT_B:
+            value = SYSCFG_EXTICR1_EXTI1_PB;
+            break;
+        case PORT_C:
+            value = SYSCFG_EXTICR1_EXTI1_PC;
+            break;
+        case PORT_D:
+            value = SYSCFG_EXTICR1_EXTI1_PD;
+            break;
+        case PORT_E:
+            value = SYSCFG_EXTICR1_EXTI1_PE;
+            break;
+        case PORT_H:
+            value = SYSCFG_EXTICR1_EXTI1_PH;
+            break;
+        }
+        break;
+    case PIN_2:
+        mask = SYSCFG_EXTICR1_EXTI2_Msk;
+        interrupt_vect = EXTI2_IRQn;
+        regidx = 0;
+        switch (port) {
+        case PORT_A:
+            value = SYSCFG_EXTICR1_EXTI2_PA;
+            break;
+        case PORT_B:
+            value = SYSCFG_EXTICR1_EXTI2_PB;
+            break;
+        case PORT_C:
+            value = SYSCFG_EXTICR1_EXTI2_PC;
+            break;
+        case PORT_D:
+            value = SYSCFG_EXTICR1_EXTI2_PD;
+            break;
+        case PORT_E:
+            value = SYSCFG_EXTICR1_EXTI2_PE;
+            break;
+        }
+        break;
+    case PIN_3:
+        mask = SYSCFG_EXTICR1_EXTI3_Msk;
+        interrupt_vect = EXTI3_IRQn;
+        regidx = 0;
+        switch (port) {
+        case PORT_A:
+            value = SYSCFG_EXTICR1_EXTI3_PA;
+            break;
+        case PORT_B:
+            value = SYSCFG_EXTICR1_EXTI3_PB;
+            break;
+        case PORT_C:
+            value = SYSCFG_EXTICR1_EXTI3_PC;
+            break;
+        case PORT_D:
+            value = SYSCFG_EXTICR1_EXTI3_PD;
+            break;
+        case PORT_E:
+            value = SYSCFG_EXTICR1_EXTI3_PE;
+            break;
+        }
+        break;
+    case PIN_4:
+        mask = SYSCFG_EXTICR2_EXTI4_Msk;
+        interrupt_vect = EXTI4_IRQn;
+        regidx = 1;
+        switch (port) {
+        case PORT_A:
+            value = SYSCFG_EXTICR2_EXTI4_PA;
+            break;
+        case PORT_B:
+            value = SYSCFG_EXTICR2_EXTI4_PB;
+            break;
+        case PORT_C:
+            value = SYSCFG_EXTICR2_EXTI4_PC;
+            break;
+        case PORT_D:
+            value = SYSCFG_EXTICR2_EXTI4_PD;
+            break;
+        case PORT_E:
+            value = SYSCFG_EXTICR2_EXTI4_PE;
+            break;
+        }
+        break;
+    case PIN_5:
+        mask = SYSCFG_EXTICR2_EXTI5_Msk;
+        interrupt_vect = EXTI9_5_IRQn;
+        regidx = 1;
+        switch (port) {
+        case PORT_A:
+            value = SYSCFG_EXTICR2_EXTI5_PA;
+            break;
+        case PORT_B:
+            value = SYSCFG_EXTICR2_EXTI5_PB;
+            break;
+        case PORT_C:
+            value = SYSCFG_EXTICR2_EXTI5_PC;
+            break;
+        case PORT_D:
+            value = SYSCFG_EXTICR2_EXTI5_PD;
+            break;
+        case PORT_E:
+            value = SYSCFG_EXTICR2_EXTI5_PE;
+            break;
+        }
+        break;
+    case PIN_6:
+        mask = SYSCFG_EXTICR2_EXTI6_Msk;
+        interrupt_vect = EXTI9_5_IRQn;
+        regidx = 1;
+        switch (port) {
+        case PORT_A:
+            value = SYSCFG_EXTICR2_EXTI6_PA;
+            break;
+        case PORT_B:
+            value = SYSCFG_EXTICR2_EXTI6_PB;
+            break;
+        case PORT_C:
+            value = SYSCFG_EXTICR2_EXTI6_PC;
+            break;
+        case PORT_D:
+            value = SYSCFG_EXTICR2_EXTI6_PD;
+            break;
+        case PORT_E:
+            value = SYSCFG_EXTICR2_EXTI6_PE;
+            break;
+        }
+        break;
+    case PIN_7:
+        mask = SYSCFG_EXTICR2_EXTI7_Msk;
+        interrupt_vect = EXTI9_5_IRQn;
+        regidx = 1;
+        switch (port) {
+        case PORT_A:
+            value = SYSCFG_EXTICR2_EXTI7_PA;
+            break;
+        case PORT_B:
+            value = SYSCFG_EXTICR2_EXTI7_PB;
+            break;
+        case PORT_C:
+            value = SYSCFG_EXTICR2_EXTI7_PC;
+            break;
+        case PORT_D:
+            value = SYSCFG_EXTICR2_EXTI7_PD;
+            break;
+        case PORT_E:
+            value = SYSCFG_EXTICR2_EXTI7_PE;
+            break;
+        }
+        break;
+    case PIN_8:
+        mask = SYSCFG_EXTICR3_EXTI8_Msk;
+        interrupt_vect = EXTI9_5_IRQn;
+        regidx = 2;
+        switch (port) {
+        case PORT_A:
+            value = SYSCFG_EXTICR3_EXTI8_PA;
+            break;
+        case PORT_B:
+            value = SYSCFG_EXTICR3_EXTI8_PB;
+            break;
+        case PORT_C:
+            value = SYSCFG_EXTICR3_EXTI8_PC;
+            break;
+        case PORT_D:
+            value = SYSCFG_EXTICR3_EXTI8_PD;
+            break;
+        case PORT_E:
+            value = SYSCFG_EXTICR3_EXTI8_PE;
+            break;
+        }
+        break;
+    case PIN_9:
+        mask = SYSCFG_EXTICR3_EXTI9_Msk;
+        interrupt_vect = EXTI9_5_IRQn;
+        regidx = 2;
+        switch (port) {
+        case PORT_A:
+            value = SYSCFG_EXTICR3_EXTI9_PA;
+            break;
+        case PORT_B:
+            value = SYSCFG_EXTICR3_EXTI9_PB;
+            break;
+        case PORT_C:
+            value = SYSCFG_EXTICR3_EXTI9_PC;
+            break;
+        case PORT_D:
+            value = SYSCFG_EXTICR3_EXTI9_PD;
+            break;
+        case PORT_E:
+            value = SYSCFG_EXTICR3_EXTI9_PE;
+            break;
+        }
+        break;
+    case PIN_10:
+        mask = SYSCFG_EXTICR3_EXTI10_Msk;
+        interrupt_vect = EXTI15_10_IRQn;
+        regidx = 2;
+        switch (port) {
+        case PORT_A:
+            value = SYSCFG_EXTICR3_EXTI10_PA;
+            break;
+        case PORT_B:
+            value = SYSCFG_EXTICR3_EXTI10_PB;
+            break;
+        case PORT_C:
+            value = SYSCFG_EXTICR3_EXTI10_PC;
+            break;
+        case PORT_D:
+            value = SYSCFG_EXTICR3_EXTI10_PD;
+            break;
+        case PORT_E:
+            value = SYSCFG_EXTICR3_EXTI10_PE;
+            break;
+        }
+        break;
+    case PIN_11:
+        mask = SYSCFG_EXTICR3_EXTI11_Msk;
+        interrupt_vect = EXTI15_10_IRQn;
+        regidx = 2;
+        switch (port) {
+        case PORT_A:
+            value = SYSCFG_EXTICR3_EXTI11_PA;
+            break;
+        case PORT_B:
+            value = SYSCFG_EXTICR3_EXTI11_PB;
+            break;
+        case PORT_C:
+            value = SYSCFG_EXTICR3_EXTI11_PC;
+            break;
+        case PORT_D:
+            value = SYSCFG_EXTICR3_EXTI11_PD;
+            break;
+        case PORT_E:
+            value = SYSCFG_EXTICR3_EXTI11_PE;
+            break;
+        }
+        break;
+    case PIN_12:
+        mask = SYSCFG_EXTICR4_EXTI12_Msk;
+        interrupt_vect = EXTI15_10_IRQn;
+        regidx = 3;
+        switch (port) {
+        case PORT_A:
+            value = SYSCFG_EXTICR4_EXTI12_PA;
+            break;
+        case PORT_B:
+            value = SYSCFG_EXTICR4_EXTI12_PB;
+            break;
+        case PORT_C:
+            value = SYSCFG_EXTICR4_EXTI12_PC;
+            break;
+        case PORT_D:
+            value = SYSCFG_EXTICR4_EXTI12_PD;
+            break;
+        case PORT_E:
+            value = SYSCFG_EXTICR4_EXTI12_PE;
+            break;
+        }
+        break;
+    case PIN_13:
+        mask = SYSCFG_EXTICR4_EXTI13_Msk;
+        interrupt_vect = EXTI15_10_IRQn;
+        regidx = 3;
+        switch (port) {
+        case PORT_A:
+            value = SYSCFG_EXTICR4_EXTI13_PA;
+            break;
+        case PORT_B:
+            value = SYSCFG_EXTICR4_EXTI13_PB;
+            break;
+        case PORT_C:
+            value = SYSCFG_EXTICR4_EXTI13_PC;
+            break;
+        case PORT_D:
+            value = SYSCFG_EXTICR4_EXTI13_PD;
+            break;
+        case PORT_E:
+            value = SYSCFG_EXTICR4_EXTI13_PE;
+            break;
+        }
+        break;
+    case PIN_14:
+        mask = SYSCFG_EXTICR4_EXTI14_Msk;
+        interrupt_vect = EXTI15_10_IRQn;
+        regidx = 3;
+        switch (port) {
+        case PORT_A:
+            value = SYSCFG_EXTICR4_EXTI14_PA;
+            break;
+        case PORT_B:
+            value = SYSCFG_EXTICR4_EXTI14_PB;
+            break;
+        case PORT_C:
+            value = SYSCFG_EXTICR4_EXTI14_PC;
+            break;
+        case PORT_D:
+            value = SYSCFG_EXTICR4_EXTI14_PD;
+            break;
+        case PORT_E:
+            value = SYSCFG_EXTICR4_EXTI14_PE;
+            break;
+        }
+        break;
+    case PIN_15:
+        mask = SYSCFG_EXTICR4_EXTI15_Msk;
+        interrupt_vect = EXTI15_10_IRQn;
+        regidx = 3;
+        switch (port) {
+        case PORT_A:
+            value = SYSCFG_EXTICR4_EXTI15_PA;
+            break;
+        case PORT_B:
+            value = SYSCFG_EXTICR4_EXTI15_PB;
+            break;
+        case PORT_C:
+            value = SYSCFG_EXTICR4_EXTI15_PC;
+            break;
+        case PORT_D:
+            value = SYSCFG_EXTICR4_EXTI15_PD;
+            break;
+        case PORT_E:
+            value = SYSCFG_EXTICR4_EXTI15_PE;
+            break;
+        }
+        break;
+    }
+    if (READBITS(SYSCFG->EXTICR[regidx], mask) != 0) {
+        // EXTI in use
+        return ERR_INUSE;
+    } else {
+        // Enable SYSCFG clock
+        SETBITS(RCC->APB2ENR, RCC_APB2ENR_SYSCFGEN);
+        // Enable EXTI
+        MODIFY_REG(SYSCFG->EXTICR[regidx], mask, value);
+        // Power down SYSCFG
+        CLEARBITS(RCC->APB2ENR, RCC_APB2ENR_SYSCFGEN);
+        // EXTI line number is same as pin. Unmask line interrupt.
+        SETBITS(EXTI->IMR1, (0x1 << pin_value));
+        if (trigger == GPIO_trig_both) {
+            // Enable both rising and falling registers
+            SETBITS(EXTI->RTSR1, (0x1 << pin_value));
+            SETBITS(EXTI->FTSR1, (0x1 << pin_value));
+        } else if (trigger == GPIO_trig_falling) {
+            SETBITS(EXTI->FTSR1, (0x1 << pin_value));
+        } else if (trigger == GPIO_trig_rising) {
+            SETBITS(EXTI->RTSR1, (0x1 << pin_value));
+        }
+        // Save pointer to callback
+        gpio_interrupt_handlers[pin_value] = callback;
+        // Enable interrupt
+        enable_irq(interrupt_vect, GPIO_isr);
+    }
+    return SYS_OK;
+}
+
+/**
+ * GPIO ISR. Handles EXTI interrupts for lines 0-15
+ */
+static void GPIO_isr(void) {
+    // Check the EXTI pending register to dermine which line(s) have interrupts
+    uint32_t pending = READBITS(EXTI->PR1, 0xFFFF); // Only need lower 16 bits
+    int i;
+    for (i = 0; i < 16; i++) {
+        if (pending & (0x1 << i)) {
+            // Call interrupt handler
+            gpio_interrupt_handlers[i]();
+        }
+    }
+    // A write of 1 to an EXTI_PR bit clears it. Just write the 'pending' mask
+    SETBITS(EXTI->PR1, pending);
 }

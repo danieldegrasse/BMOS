@@ -158,6 +158,15 @@ typedef enum GPIO_af {
     GPIO_af_dis, /*!< Alternate function disabled */
 } GPIO_af_t;
 
+/**
+ * GPIO interrupt trigger types
+ */
+typedef enum GPIO_trigger {
+    GPIO_trig_falling,
+    GPIO_trig_rising,
+    GPIO_trig_both,
+} GPIO_trigger_t;
+
 typedef enum GPIO_level {
     GPIO_LOW = 0,
     GPIO_HIGH = 1,
@@ -206,5 +215,17 @@ syserr_t GPIO_write(GPIO_pin_t pin, GPIO_level_t lvl);
  * @return GPIO pin level
  */
 GPIO_level_t GPIO_read(GPIO_pin_t pin);
+
+/**
+ * Enable interrupts on a GPIO pin
+ * @param pin: pin to enable interrupts on
+ * @param trigger: either GPIO_trig_rising, GPIO_trig_falling, or GPIO_trig_both
+ * @param callback: callback to run. This function will be called from an
+ * interrupt context.
+ * @return SYS_OK on success, or ERR_INUSE if another GPIO pin is using the
+ * interrupt line (GPIO pins are multipled accross 16 lines)
+ */
+syserr_t GPIO_interrupt_enable(GPIO_pin_t pin, GPIO_trigger_t trigger,
+                               void(*callback)(void));
 
 #endif

@@ -50,7 +50,7 @@ static UART_status_t UARTS[NUM_UARTS] = {0};
 static uint8_t UART_RBUFFS[NUM_UARTS][UART_RINGBUF_SIZE];
 static uint8_t UART_WBUFFS[NUM_UARTS][UART_RINGBUF_SIZE];
 
-static void UART_interrupt(UART_periph_t source);
+static void UART_interrupt(void);
 static void UART_transmit(UART_status_t *handle);
 static int UART_bufwrite(UART_status_t *uart, uint8_t *buf, int len);
 static syserr_t UART_set_wordlen(UART_status_t *handle, UART_wordlen_t wlen);
@@ -181,8 +181,6 @@ UART_handle_t UART_open(UART_periph_t periph, UART_config_t *config,
     }
     // Enable the transmitter and receiver
     SETBITS(handle->regs->CR1, USART_CR1_RE);
-    // Register interrupt handler
-    set_UART_isr(UART_interrupt);
     // Enable transmit complete and receive interrupts
     SETBITS(handle->regs->CR1, USART_CR1_RXNEIE);
     SETBITS(handle->regs->CR1, USART_CR1_TCIE);
@@ -517,15 +515,37 @@ static void UART_transmit(UART_status_t *handle) {
 
 /**
  * Handles UART interrupts
- * @param source: UART device generating interrupt
  */
-static void UART_interrupt(UART_periph_t source) {
+static void UART_interrupt(void) {
     char data;
+    UART_status_t *handle;
     /**
-     * Use the source as an index into the handle structures,
-     * to find the UART that generated the interrupt
+     * Use the exception number to determine which UART caused the interrupt
      */
-    UART_status_t *handle = &UARTS[source];
+    switch (READBITS(SCB->ICSR, SCB_ICSR_VECTACTIVE_Msk) - 16) {
+    /* Call the uart_handler function with the relevant UART device */
+    case USART1_IRQn:
+        handle = &UARTS[USART_1];
+        break;
+    case USART2_IRQn:
+        handle = &UARTS[USART_2];
+        break;
+    case USART3_IRQn:
+        handle = &UARTS[USART_3];
+        break;
+    case LPUART1_IRQn:
+        handle = &UARTS[LPUART_1];
+        break;
+    default:
+        /**
+         * Spin here. We want to stop processor as we
+         * should not be handling this exception.
+         */
+        while (1) {
+            // Spin
+        }
+        break;
+    }
     /**
      * Now determine what flag caused the interrupt. We need to check for
      * the TXE and RXNE bits
@@ -644,7 +664,7 @@ static syserr_t UART_enable_periph(UART_status_t *handle,
         // Reset peripheral by toggling reset bit
         SETBITS(RCC->APB1RSTR2, RCC_APB1RSTR2_LPUART1RST);
         CLEARBITS(RCC->APB1RSTR2, RCC_APB1RSTR2_LPUART1RST);
-        enable_irq(LPUART1_IRQn); // Enable interrupts for this device
+        enable_irq(LPUART1_IRQn, UART_interrupt); // Enable interrupts for this device
         handle->regs = LPUART1;
         break;
     case USART_1:
@@ -652,7 +672,7 @@ static syserr_t UART_enable_periph(UART_status_t *handle,
         // Reset peripheral by toggling reset bit
         SETBITS(RCC->APB2RSTR, RCC_APB2RSTR_USART1RST);
         CLEARBITS(RCC->APB2RSTR, RCC_APB2RSTR_USART1RST);
-        enable_irq(USART1_IRQn); // Enable interrupts for this device
+        enable_irq(USART1_IRQn, UART_interrupt); // Enable interrupts for this device
         handle->regs = USART1;
         break;
     case USART_2:
@@ -660,7 +680,7 @@ static syserr_t UART_enable_periph(UART_status_t *handle,
         // Reset peripheral by toggling reset bit
         SETBITS(RCC->APB1RSTR1, RCC_APB1RSTR1_USART2RST);
         CLEARBITS(RCC->APB1RSTR1, RCC_APB1RSTR1_USART2RST);
-        enable_irq(USART2_IRQn); // Enable interrupts for this device
+        enable_irq(USART2_IRQn, UART_interrupt); // Enable interrupts for this device
         handle->regs = USART2;
         break;
     case USART_3:
@@ -668,7 +688,7 @@ static syserr_t UART_enable_periph(UART_status_t *handle,
         // Reset peripheral by toggling reset bit
         SETBITS(RCC->APB1RSTR1, RCC_APB1RSTR1_USART3RST);
         CLEARBITS(RCC->APB1RSTR1, RCC_APB1RSTR1_USART2RST);
-        enable_irq(USART3_IRQn); // Enable interrupts for this device
+        enable_irq(USART3_IRQn, UART_interrupt); // Enable interrupts for this device
         handle->regs = USART3;
         break;
     default:

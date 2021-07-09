@@ -70,10 +70,12 @@ static const char *IDLE_TASK_NAME = "Idle Task";
 static inline void set_pendsv();
 static inline void trigger_svcall();
 static void idle_entry(void *arg);
-static uint32_t *initialize_task_stack(uint32_t *stack_ptr, void *return_pc,
-                                       void *arg0);
+static uint32_t *init_task_stack(uint32_t *stack_ptr, void *return_pc,
+                                 void *arg0);
 static inline list_return_t decrement_task_delay(void *taskptr);
-static inline list_return_t find_first_zero_delay(void *taskptr);
+static void mark_task_ready(void *taskptr);
+static inline list_return_t delete_list(void *taskptr);
+static inline void free_task(void *task);
 static void task_exithandler();
 
 /**
@@ -150,24 +152,13 @@ task_handle_t task_create(void (*entry)(void *), void *arg,
         *(task->stack_softend) = 0xDE; // Dummy value
     }
     // Update task state and place in ready queue
-    task->blockstate = BLOCK_NONE;
-    task->state = TASK_READY;
     task->entry = entry;
     task->arg = arg;
     // Initialize task stack
-    task->stack_ptr = initialize_task_stack((uint32_t *)task->stack_start,
-                                            task->entry, task->arg);
+    task->stack_ptr =
+        init_task_stack((uint32_t *)task->stack_start, task->entry, task->arg);
     // Place this task into the ready queue (scheduler can select it)
-    ready_tasks[task->priority] =
-        list_append(ready_tasks[task->priority], task, &(task->list_state));
-    if (ready_tasks[task->priority] == NULL) {
-        LOG_E(TAG, "Could not append new task to ready list");
-        free(task);
-        if (task->stack_allocated) {
-            free(task->stack_start);
-        }
-        return NULL;
-    }
+    mark_task_ready(task);
     // Return task handle
     return (task_handle_t)task;
 };
@@ -246,20 +237,23 @@ void task_destroy(task_handle_t task) {
         trigger_svcall();
     } else {
         // Remove task from list it is in
-        if (tsk->state == TASK_BLOCKED) {
+        switch (tsk->state) {
+        case TASK_BLOCKED:
             blocked_tasks = list_remove(blocked_tasks, &(tsk->list_state));
-        } else if (tsk->state == TASK_READY) {
+            break;
+        case TASK_READY:
             ready_tasks[tsk->priority] =
                 list_remove(ready_tasks[tsk->priority], &(tsk->list_state));
-        } else {
+            break;
+        case TASK_DELAYED:
+            delayed_tasks = list_remove(delayed_tasks, &(tsk->list_state));
+            break;
+        default:
             LOG_W(TAG,
                   "Inactive destroyed task is not in blocked or ready list");
         }
-        // Free resources of active task
-        if (tsk->stack_allocated) {
-            free(tsk->stack_end);
-        }
-        free(tsk);
+        // Free resources of task
+        free_task(tsk);
     }
 }
 
@@ -315,13 +309,9 @@ void unblock_task(task_handle_t task, block_reason_t reason) {
     }
     // Disable interrupts
     mask_irq();
-    // Set task as ready
-    tsk->state = TASK_READY;
-    tsk->blockstate = BLOCK_NONE;
-    // Move task to ready list
     blocked_tasks = list_remove(blocked_tasks, &(tsk->list_state));
-    ready_tasks[tsk->priority] =
-        list_append(ready_tasks[tsk->priority], tsk, &(tsk->list_state));
+    // Mark task as ready
+    mark_task_ready(tsk);
 #if SYS_USE_PREEMPTION == PREEMPTION_ENABLED
     // Check to see if this task is higher priority than the active one.
     if (tsk->priority > active_task->priority) {
@@ -346,14 +336,10 @@ void unblock_delayed_task(task_handle_t task) {
     }
     // Mask interrupts here
     mask_irq();
-    // Set task as ready
-    tsk->state = TASK_READY;
-    tsk->blockstate = BLOCK_NONE;
     // Remove list from delayed list
     delayed_tasks = list_remove(delayed_tasks, &(tsk->list_state));
-    // Add task to correct ready list
-    ready_tasks[tsk->priority] =
-        list_append(ready_tasks[tsk->priority], tsk, &(tsk->list_state));
+    // Mark task as ready
+    mark_task_ready(tsk);
 #if SYS_USE_PREEMPTION == PREEMPTION_ENABLED
     // Check to see if this task is higher priority than the active one.
     if (tsk->priority > active_task->priority) {
@@ -454,23 +440,15 @@ __attribute__((naked)) void PendSVHandler() {
  * Handler mode, as the PendSV isr
  */
 void SysTickHandler() {
-    task_status_t *ready_task;
-    // Decrement the delay value for each task
-    list_iterate(delayed_tasks, decrement_task_delay);
-    // While tasks with a zero delay exist, unblock them
-    while (1) {
-        ready_task =
-            (task_status_t *)list_iterate(delayed_tasks, find_first_zero_delay);
-        if (ready_task == (task_status_t *)list_get_tail(delayed_tasks) &&
-            (ready_task == NULL || ready_task->blockstate != 0)) {
-            break; // No more zero delay tasks exist
-        }
-        // Unblock task
-        delayed_tasks = list_remove(delayed_tasks, &(ready_task->list_state));
-        ready_tasks[ready_task->priority] =
-            list_append(ready_tasks[ready_task->priority], ready_task,
-                        &(ready_task->list_state));
-    }
+    /**
+     * Use list filter to decrement task delay counts, and if task delay is
+     * zero, remove the delayed task from the delayed_task lists, and mark it
+     * as ready and move it to the ready list.
+     * We accomplish this by using the "destructor" function of list_filter
+     * to instead copy the task to the ready list
+     */
+    delayed_tasks =
+        list_filter(delayed_tasks, decrement_task_delay, mark_task_ready);
 #if SYS_USE_PREEMPTION == PREEMPTION_ENABLED
     /** Check if preemption should occur **/
     int i = RTOS_PRIORITY_COUNT - 1;
@@ -568,8 +546,8 @@ void enable_systick() {
  * @param arg0: assigned to r0, argument to pass to task entry function
  * @return new stack pointer after initialization
  */
-static uint32_t *initialize_task_stack(uint32_t *stack_ptr, void *return_pc,
-                                       void *arg0) {
+static uint32_t *init_task_stack(uint32_t *stack_ptr, void *return_pc,
+                                 void *arg0) {
     /**
      * Memory access to stack pointer must be WORD aligned. If pointer is not
      * word aligned, just loose a few stack bytes until it is.
@@ -620,22 +598,18 @@ static void task_exithandler() {
  * @param arg: unused.
  */
 static void idle_entry(void *arg) {
-    task_status_t *task;
     /* Idle task should never exit */
     while (1) {
         /**
          * Reap resources of exited tasks
          */
-        while (exited_tasks != NULL) {
-            task = list_get_head(exited_tasks);
-            exited_tasks = list_remove(exited_tasks, &(task->list_state));
-            LOG_MIN(SYSLOG_LEVEL_DEBUG, TAG, "Reaping task");
-            // Free task and task stack
-            if (task->stack_allocated) {
-                free(task->stack_end);
-            }
-            free(task);
-        }
+        mask_irq();
+        exited_tasks = list_filter(exited_tasks, delete_list, free_task);
+        unmask_irq();
+        /**
+         * Check all task lists, and see if any are breaking stack boundaries
+         */
+
         // Flush logging output
         fsync(STDOUT_FILENO);
         // Wait for an interrupt to fire
@@ -646,21 +620,55 @@ static void idle_entry(void *arg) {
 }
 
 /**
- * Used by the system tick handler to decrement task delay counts
+ * Used by the system tick handler to decrement task delay counts,
+ * and remove any tasks that are ready to run
+ * @param taskptr: pointer to the task
+ * @return LST_REM if the task is ready, or LST_CONT otherwise
  */
 static inline list_return_t decrement_task_delay(void *taskptr) {
     task_status_t *task = (task_status_t *)taskptr;
     task->blockstate--;
-    return LST_CONT;
+    return task->blockstate == 0 ? LST_REM : LST_CONT;
 }
 
 /**
- * Used by system tick handler to find the first task with a zero delay
+ * Marks a task as ready, and moves it to the correct ready list. Task MUST not
+ * be in another list
+ * @param taskptr: Pointer to the task
  */
-static inline list_return_t find_first_zero_delay(void *taskptr) {
+static void mark_task_ready(void *taskptr) {
     task_status_t *task = (task_status_t *)taskptr;
-    // Break if task has zero delay
-    return task->blockstate == 0 ? LST_BRK : LST_CONT;
+    // Update task state
+    task->state = TASK_READY;
+    task->blockstate = BLOCK_NONE;
+    // Add task to correct ready list
+    ready_tasks[task->priority] =
+        list_append(ready_tasks[task->priority], task, &(task->list_state));
+}
+
+/**
+ * Utility function to remove tasks from a list. Unconditionally returns
+ * LST_REM
+ * @param taskptr: unused
+ * @return LST_REM
+ */
+static inline list_return_t delete_list(void *taskptr) {
+    (void)taskptr; // Prevent unused variable warnings
+    return LST_REM;
+}
+
+/**
+ * Utility function to free a task's resources after it has been removed
+ * from a list
+ * @param task: Task to free
+ */
+static inline void free_task(void *task) {
+    task_status_t *tsk = (task_status_t *)task;
+    if (tsk->stack_allocated) {
+        free(tsk->stack_start);
+    }
+    LOG_MIN(SYSLOG_LEVEL_DEBUG, "free_task", "Freeing task");
+    free(tsk);
 }
 
 /**

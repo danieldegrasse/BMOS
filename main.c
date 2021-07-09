@@ -1,27 +1,23 @@
+/**
+ * @file task_test.c
+ * Test RTOS task creation, switching, and destruction
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
 #include <drivers/clock/clock.h>
-#include <util/list/list.h>
+#include <sys/task/task.h>
 #include <util/logging/logging.h>
 
-/**
- * @file list_test.c
- * This file verifies the implementation of lists within the RTOS
- * It does so by creating a list, appending elements, and then verifying
- * their order as well as removing them
- */
-
-struct list_entry {
-    char *data;
-    list_state_t state;
-};
-
-static char *TAG = "list_test";
-static char data[] = "Test Data elements";
-static struct list_entry elements[sizeof(data) + 2];
+static void rtos_task1(void *unused);
+static void rtos_task2(void *arg);
+static void rtos_task3(void *unused);
+static void rtos_task4(void *unused);
+static char t3stack[2048];
+static task_handle_t task3;
 
 /**
  * Initializes system
@@ -32,196 +28,120 @@ static void system_init() {
 }
 
 /**
- * Prints entries of list
+ * Task 1 entry point. Creates tasks and exits.
+ * @param unused: Unused arg
  */
-static list_return_t print_iterator(void *elem) {
-    if (elem == NULL) {
-        // Crash. Should not occur.
-        LOG_E(TAG, "print interator failed: null value");
-        exit(ERR_FAIL);
+static void rtos_task1(void *unused) {
+    task_config_t t3cfg = DEFAULT_TASK_CONFIG;
+    task_config_t t4cfg = DEFAULT_TASK_CONFIG;
+    const char *TAG = "Rtos_Task1";
+    LOG_D(TAG, "Task 1: Create task 3 and 4. Starting");
+    // Create task 3
+    t3cfg.task_stacksize = 2048;
+    t3cfg.task_stack = t3stack;
+    t3cfg.task_name = "Task3";
+    LOG_D(TAG, "Task 1 creating task 3");
+    task3 = task_create(rtos_task3, NULL, &t3cfg);
+    if (task3 == NULL) {
+        LOG_E(TAG, "Could not create task 3");
     }
-    char *ch = ((struct list_entry *)elem)->data;
-    printf("%c", *ch);
-    return LST_CONT; // Iterate further in list
+    // Delay, then create task 4. This task will kill task 3
+    task_delay(1000);
+    LOG_D(TAG, "Task 1 running. Will create task 4");
+    t4cfg.task_name = "Task4";
+    t4cfg.task_priority = DEFAULT_PRIORITY + 1;
+    if (task_create(rtos_task4, task3, &t4cfg) == NULL) {
+        LOG_E(TAG, "Could not create task 4");
+    }
+    return;
 }
 
 /**
- * Removes all list elements that are a T or t
+ * Task 2 entry point. Will run, and periodically yield execution.
+ * The task will exit of its own accord
+ * @param arg: String passed at task creation
  */
-static list_return_t remove_t(void *elem) {
-    if (elem == NULL) {
-        // Crash. Should not occur.
-        LOG_E(TAG, "print interator failed: null value");
-        exit(ERR_FAIL);
+static void rtos_task2(void *arg) {
+    const char *TAG = "Rtos_Task2";
+    int i = 20;
+    LOG_D(TAG, "Task 2 starting. Argument %s", (char *)arg);
+    LOG_D(TAG, "Task 2 will yield, and will exit independently");
+    while (i) {
+        LOG_D(TAG, "Task 2 running");
+        i--;
+        task_delay(500);
+        if (i % 5 == 0) {
+            // Should yield a total of 4 times
+            LOG_D(TAG, "Task 2 yielding");
+            task_yield();
+        }
     }
-    char *ch = ((struct list_entry *)elem)->data;
-    if (*ch == 'T' || *ch == 't') {
-        return LST_REM;
-    } else {
-        return LST_CONT;
+    // Task runtime has expired. Exit.
+    return;
+}
+
+/**
+ * Task 3 entry point. Will attempt to monopolize CPU time. Task 4 should
+ * preempt and destroy it if preemption is enabled
+ * @param unused: unused
+ */
+static void rtos_task3(void *unused) {
+    const char *TAG = "Rtos_Task3";
+    LOG_D(TAG, "Task 3: Holding CPU time");
+    while (1) {
+        // Delay_ms does NOT yield
+        blocking_delay_ms(500);
+        LOG_D(TAG, "Task 3 running");
     }
 }
 
 /**
- * Finds the first 'D' character in a list
+ * Task 4 entry point. Will delay, then destroy task 3
+ * @param arg: Task 3 handle
  */
-static list_return_t find_first_D(void *elem) {
-    if (elem == NULL) {
-        // Crash. Should not occur.
-        LOG_E(TAG, "remove interator failed: null value");
-        exit(ERR_FAIL);
-    }
-    char *ch = ((struct list_entry *)elem)->data;
-    if (*ch == 'D') {
-        return LST_BRK;
-    } else {
-        return LST_CONT;
-    }
+static void rtos_task4(void *arg) {
+    const char *TAG = "Rtos_Task4";
+    LOG_D(TAG, "Task 4 starting. Dropping into delay, then killing task 3");
+    task_delay(2000);
+    LOG_D(TAG, "Task 4 destroying task 3");
+    task_destroy((task_handle_t)arg);
+    LOG_D(TAG, "Task 4 exiting");
 }
 
 /**
- * Dummy function to free resources of elements added to list
- */
-void destructor(void *elem) {
-    if (elem == NULL) {
-        // Crash. Should not occur.
-        LOG_E(TAG, "destructor interator failed: null value");
-        exit(ERR_FAIL);
-    }
-    char *ch = ((struct list_entry *)elem)->data;
-    if (*ch != 'T' && *ch != 't') {
-        LOG_E(TAG, "destructor was asked to free the wrong entry");
-        exit(ERR_FAIL);
-    }
-}
-
-/**
- * List test function
+ * Testing entry point. Tests task creation, switching, and destruction
  */
 int main() {
+    task_handle_t task1;
+    task_config_t task1cfg = DEFAULT_TASK_CONFIG;
+    task_handle_t task2;
+    task_config_t task2cfg = DEFAULT_TASK_CONFIG;
+    char *arg = "Hello";
+
     system_init();
-    struct list_entry *ret;
-    int i;
-    // Make list
-    list_t list = NULL;
-    for (i = 0; i < sizeof(data) - 1; i++) {
-        // Populate list entry
-        elements[i].data = data + i;
-        // Append to list
-        list = list_append(list, (elements + i), &elements[i].state);
-        if (list == NULL) {
-            LOG_E(TAG, "List return value was null");
-            exit(ERR_FAIL);
-        }
+
+    /**
+     * Task 1 has a high priority and spawns task 3 and 4
+     */
+    task1cfg.task_name = "Task1";
+    task1cfg.task_priority = DEFAULT_PRIORITY + 1;
+    task1 = task_create(rtos_task1, NULL, &task1cfg);
+    if (!task1) {
+        LOG_E(__FILE__, "Failed to create task 1\n");
+        return ERR_FAIL;
     }
-    // Print list entries
-    printf("Test 1: Valid list creation\n"
-           "Expected printout: %s\n"
-           "Actual printout: ",
-           data);
-    ret = list_iterate(list, print_iterator);
-    printf("\n");
-    if ((struct list_entry *)ret != &elements[i - 1]) {
-        // returned value should have been last list entry
-        LOG_E(TAG, "Iterator has bad return value. Expected %p, got %p",
-              &elements[i - 1], ret);
-        exit(ERR_FAIL);
+    /**
+     * Task 2 has a default priority and will exit of its own accord
+     * It also will periodically yield to allow another task to run.
+     */
+    task2cfg.task_name = "Task2";
+    task2cfg.task_priority = DEFAULT_PRIORITY;
+    task2 = task_create(rtos_task2, arg, &task2cfg);
+    if (!task2) {
+        LOG_E(__FILE__, "Failed to create task 2\n");
+        return ERR_FAIL;
     }
-    // Test list prepending
-    elements[sizeof(data)].data = &data[0];
-    list = list_prepend(list, &elements[sizeof(data)],
-                        &elements[sizeof(data)].state);
-    if (list == NULL) {
-        LOG_E(TAG, "List return value was null");
-        exit(ERR_FAIL);
-    }
-    // Print list entries
-    printf("Test 2: Valid list prepend\n"
-           "Expected printout: %c%s\n"
-           "Actual printout: ",
-           data[0], data);
-    ret = list_iterate(list, print_iterator);
-    printf("\n");
-    if (ret != &elements[i - 1]) {
-        // returned value should have been last list entry
-        LOG_E(TAG, "Iterator has bad return value. Expected %p, got %p",
-              &elements[i - 1], ret);
-        exit(ERR_FAIL);
-    }
-    // Verify that list iteration can find a value
-    printf("Test 3: valid list iteration\n");
-    ret = list_iterate(list, find_first_D);
-    if (ret != &elements[5]) {
-        LOG_E(TAG, "Test 3 failed");
-        exit(ERR_FAIL);
-    } else {
-        printf("Test 3 Passed\n");
-    }
-    // Verify that list filtering functions
-    printf("Test 4: list removal\n");
-    list = list_remove(list, &(ret->state));
-    if (list == NULL) {
-        LOG_E(TAG, "Test 4 failed");
-        exit(ERR_FAIL);
-    } else {
-        printf("Test 4 Passed\n");
-    }
-    printf("List contents: ");
-    // Verify that list does not have first D
-    ret = list_iterate(list, print_iterator);
-    if ((struct list_entry *)ret != &elements[i - 1]) {
-        // returned value should have been last list entry
-        LOG_E(TAG, "Iterator has bad return value. Expected %p, got %p",
-              &elements[i - 1], ret);
-        exit(ERR_FAIL);
-    }
-    printf("\n");
-    // Verify that list can handle another append
-    printf("Test 5: List append after remove\n");
-    list = list_append(list, &elements[5], &elements[5].state);
-    if (list == NULL) {
-        LOG_E(TAG, "List return value was null");
-        exit(ERR_FAIL);
-    } else {
-        printf("Test 5 passed\nList contents: ");
-        ret = list_iterate(list, print_iterator);
-        if ((struct list_entry *)ret != &elements[5]) {
-            // returned value should have been last list entry
-            LOG_E(TAG, "Iterator has bad return value. Expected %p, got %p",
-                  &elements[5], ret);
-            exit(ERR_FAIL);
-        }
-        printf("\n");
-    }
-    printf("Test 6: Removing Ts. If the list printed has any 'T' or 't's in\n"
-           "it, this test failed\nList Contents:\n");
-    list = list_filter(list, remove_t, destructor);
-    if (list == NULL) {
-        LOG_E(TAG, "Test 6 failed\n");
-        exit(ERR_FAIL);
-    }
-    ret = list_iterate(list, print_iterator);
-    if (ret != &elements[5]) {
-        LOG_E(TAG, "Test 6 failed");
-        exit(ERR_FAIL);
-    }
-    printf("\n");
-    printf(
-        "Test 7: Removing all elements\n"
-        "This test should print out the list contents as they are removed\n");
-    i = 0;
-    while (list != NULL) {
-        ret = list_get_head(list);
-        printf("%c", *((char *)ret->data));
-        list = list_remove(list, &(ret->state));
-        i++;
-    }
-    printf("\n");
-    if (i == 14) {
-        printf("Test 7 passed\n");
-    } else {
-        printf("Test 7 failed\n");
-    }
-    printf("If expected outputs matched actual, all tests passed\n");
+    LOG_D(__FILE__, "Starting RTOS");
+    rtos_start();
     return SYS_OK;
 }

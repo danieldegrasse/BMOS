@@ -120,19 +120,19 @@ void LOG_MIN(int log_level, const char *tag, const char *logstr) {
         write(STDOUT_FILENO, tag, strlen(tag));
         switch (log_level) {
         case SYSLOG_LEVEL_DEBUG:
-            write(STDOUT_FILENO, "[DEBUG]: ", 9);
+            write(STDOUT_FILENO, " [DEBUG]: ", 10);
             break;
         case SYSLOG_LEVEL_INFO:
-            write(STDOUT_FILENO, "[INFO]: ", 8);
+            write(STDOUT_FILENO, " [INFO]: ", 9);
             break;
         case SYSLOG_LEVEL_WARNING:
-            write(STDOUT_FILENO, "[WARNING]: ", 11);
+            write(STDOUT_FILENO, " [WARNING]: ", 12);
             break;
         case SYSLOG_LEVEL_ERROR:
-            write(STDOUT_FILENO, "[ERROR]: ", 9);
+            write(STDOUT_FILENO, " [ERROR]: ", 10);
             break;
         default:
-            write(STDOUT_FILENO, "[LOG]: ", 7);
+            write(STDOUT_FILENO, " [LOG]: ", 8);
             break;
         }
         // Log logging string

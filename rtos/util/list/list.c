@@ -74,7 +74,8 @@ void *list_iterate(list_t list, list_return_t (*itr)(void *)) {
  * Filters a linked list, using "itr" to determine if elements should be removed
  * @param list: list to filter
  * @param itr: iterator function. Return value of LST_CONT continues, LST_BRK
- * stops iteration, and LST_REM removes the current element from the list.
+ * stops iteration, and LST_REM removes the current element from the list and
+ * continues iteration.
  * @param destructor: Function called with each element that the iterator
  * returns LST_REM for. Allows caller to free list elements.
  * @return new list after modification (or NULL on error/empty list)

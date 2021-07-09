@@ -6,6 +6,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 #include <config.h>
@@ -73,8 +74,9 @@ static void idle_entry(void *arg);
 static uint32_t *init_task_stack(uint32_t *stack_ptr, void *return_pc,
                                  void *arg0);
 static inline list_return_t decrement_task_delay(void *taskptr);
-static void mark_task_ready(void *taskptr);
+static inline void mark_task_ready(void *taskptr);
 static inline list_return_t delete_list(void *taskptr);
+static inline list_return_t check_stack(void *taskptr);
 static inline void free_task(void *task);
 static void task_exithandler();
 
@@ -598,6 +600,7 @@ static void task_exithandler() {
  * @param arg: unused.
  */
 static void idle_entry(void *arg) {
+    int i;
     /* Idle task should never exit */
     while (1) {
         /**
@@ -609,7 +612,13 @@ static void idle_entry(void *arg) {
         /**
          * Check all task lists, and see if any are breaking stack boundaries
          */
-
+        for (i = 0; i < RTOS_PRIORITY_COUNT; i++) {
+            // Check each ready task list for overflowed tasks
+            mask_irq();
+            ready_tasks[i] =
+                list_filter(ready_tasks[i], check_stack, free_task);
+            unmask_irq();
+        }
         // Flush logging output
         fsync(STDOUT_FILENO);
         // Wait for an interrupt to fire
@@ -632,11 +641,33 @@ static inline list_return_t decrement_task_delay(void *taskptr) {
 }
 
 /**
+ * Checks stack boundaries of a task
+ * @param taskptr: Task to check stack boundaries of
+ * @return LST_REM if task overflowed stack, or LST_CONT if all is well
+ */
+static inline list_return_t check_stack(void *taskptr) {
+    task_status_t *task = (task_status_t *)taskptr;
+    if (task->stack_ptr < (uint32_t*)task->stack_softend) {
+        // Log error to warn user that task overflowed stack.
+        LOG_MIN(SYSLOG_LEVEL_ERROR, TAG, "Task overflowed boundaries!!");
+        // Write task name to stdout
+        if (task->name != NULL) {
+            write(STDOUT_FILENO, "Task name: ", 11);
+            write(STDOUT_FILENO, task->name, strlen(task->name));
+            write(STDOUT_FILENO, "\n", 1);
+        }
+        return LST_REM;
+    } else {
+        return LST_CONT; // All is well.
+    }
+}
+
+/**
  * Marks a task as ready, and moves it to the correct ready list. Task MUST not
  * be in another list
  * @param taskptr: Pointer to the task
  */
-static void mark_task_ready(void *taskptr) {
+static inline void mark_task_ready(void *taskptr) {
     task_status_t *task = (task_status_t *)taskptr;
     // Update task state
     task->state = TASK_READY;
@@ -667,7 +698,7 @@ static inline void free_task(void *task) {
     if (tsk->stack_allocated) {
         free(tsk->stack_start);
     }
-    LOG_MIN(SYSLOG_LEVEL_DEBUG, "free_task", "Freeing task");
+    LOG_MIN(SYSLOG_LEVEL_DEBUG, TAG, "Reaping dead task");
     free(tsk);
 }
 

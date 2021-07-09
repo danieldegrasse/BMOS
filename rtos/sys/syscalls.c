@@ -21,8 +21,9 @@ extern int errno;
 #include <drivers/gpio/gpio.h>
 #include <drivers/semihost/semihost.h>
 #include <drivers/swo/swo.h>
-#include <sys/err.h>
 #include <drivers/uart/uart.h>
+#include <sys/err.h>
+#include <sys/task/task.h>
 
 extern char _ebss; // Defined by linker
 
@@ -47,7 +48,16 @@ void _exit(int status) {
         while (1)
             ;
     } else {
-        printf("System exited with code %i\n", status);
+        if (rtos_started()) {
+            printf("ERROR: Task exited with code %i\n", status);
+            task_destroy(get_active_task());
+            while (1)
+                ;
+        } else {
+            printf("ERROR: System exited with code %i\n", status);
+            while (1)
+                ;
+        }
     }
 }
 /**

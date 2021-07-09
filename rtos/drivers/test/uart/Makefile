@@ -5,7 +5,7 @@ TOOLCHAIN_ROOT=/usr
 # Debugger command
 OPENOCD=openocd -f /usr/share/openocd/scripts/board/stm32l4discovery.cfg
 
-# Drivers directory
+# RTOS directory
 RTOS=$(subst /drivers/test/uart,, $(PWD))
 
 # Program name

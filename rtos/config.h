@@ -17,7 +17,8 @@
 /** System exit types */
 /** Minimal exit implementation. Spins in a while loop */
 #define SYSEXIT_MIN 0
-/** Full exit implementation. Logs code to debug output */
+/** Full exit implementation. Logs code to debug output, and exits task if
+ * running in a task context */
 #define SYSEXIT_FULL 1
 
 /** System heap constants */
@@ -55,7 +56,7 @@
  * System exit type. Set by passing -DSYSEXIT=val
  */
 #ifndef SYSEXIT
-#define SYSEXIT SYSEXIT_MIN
+#define SYSEXIT SYSEXIT_FULL
 #endif
 
 /**

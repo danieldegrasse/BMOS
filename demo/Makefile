@@ -5,11 +5,11 @@ TOOLCHAIN_ROOT=/usr
 # Debugger command
 OPENOCD=openocd -f /usr/share/openocd/scripts/board/stm32l4discovery.cfg
 
-# Drivers directory
-RTOS=rtos
+# RTOS directory
+RTOS=$(subst /demo,/rtos, $(PWD))
 
 # Program name
-PROG=main
+PROG=demo
 
 # Include drivers makefile
 include $(RTOS)/rtos.mk

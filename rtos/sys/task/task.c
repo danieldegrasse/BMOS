@@ -40,16 +40,17 @@ typedef enum task_state {
  * Task control block. Keeps task status and recordkeeping information.
  */
 typedef struct task_status {
-    uint32_t *stack_ptr;     /*!< Task stack pointer. MUST be first entry*/
-    char *stack_start;       /*!< Task stack start */
-    char *stack_end;         /*!< End of task stack */
-    void (*entry)(void *);   /*!< task entry point */
-    void *arg;               /*!< Task argument */
-    task_state_t state;      /*!< state of task */
-    const char *name;        /*!< Task name */
-    bool stack_allocated;    /*!< Was the stack allocated? */
-    int blockstate;          /*!< cause for task block (or delay value) */
-    uint32_t priority;       /*!< Task priority */
+    uint32_t *stack_ptr;   /*!< Task stack pointer. MUST be first entry*/
+    char *stack_start;     /*!< Task stack start */
+    char *stack_softend;   /*!< If start_ptr is below this, stack overflowed */
+    char *stack_end;       /*!< End of task stack */
+    void (*entry)(void *); /*!< task entry point */
+    void *arg;             /*!< Task argument */
+    task_state_t state;    /*!< state of task */
+    const char *name;      /*!< Task name */
+    bool stack_allocated;  /*!< Was the stack allocated? */
+    int blockstate;        /*!< cause for task block (or delay value) */
+    uint32_t priority;     /*!< Task priority */
     list_state_t list_state; /*!< Task list state */
 } task_status_t;
 
@@ -101,13 +102,14 @@ task_handle_t task_create(void (*entry)(void *), void *arg,
         // Set default task parameters
         task->priority = DEFAULT_PRIORITY;
         task->name = "";
-        task->stack_end = malloc(DEFAULT_STACKSIZE);
+        // Allocate one extra byte so that the stack start is word aligned
+        task->stack_end = malloc(DEFAULT_STACKSIZE + 1);
         task->stack_allocated = true;
         if (task->stack_end == NULL) {
             free(task);
             return NULL;
         }
-        task->stack_start = task->stack_end + (DEFAULT_STACKSIZE - 1);
+        task->stack_start = task->stack_end + (DEFAULT_STACKSIZE);
     } else {
         // Check priority
         if (cfg->task_priority > RTOS_PRIORITY_COUNT) {
@@ -116,9 +118,14 @@ task_handle_t task_create(void (*entry)(void *), void *arg,
         // Check if a stack was provided
         if (cfg->task_stack) {
             task->stack_end = cfg->task_stack;
+            // Calculate start of stack
+            task->stack_start = task->stack_end + (cfg->task_stacksize - 1);
             task->stack_allocated = false;
         } else {
-            task->stack_end = malloc(cfg->task_stacksize);
+            // Allocate one extra byte so that the stack start is word aligned
+            task->stack_end = malloc(cfg->task_stacksize + 1);
+            // Calculate start of stack
+            task->stack_start = task->stack_end + (cfg->task_stacksize);
             task->stack_allocated = true;
             if (task->stack_end == NULL) {
                 free(task);
@@ -131,9 +138,16 @@ task_handle_t task_create(void (*entry)(void *), void *arg,
             // Default value
             task->name = "";
         }
-        // Calculate start of stack
-        task->stack_start = task->stack_end + (cfg->task_stacksize - 1);
         task->priority = cfg->task_priority;
+    }
+    /**
+     * Setup stack padding. 'stack_softend' is the memory location where padding
+     * starts, and where we consider a stack to have overflowed.
+     */
+    for (task->stack_softend = task->stack_end;
+         task->stack_softend < (task->stack_end + SYS_STACK_PROTECTION_SIZE);
+         task->stack_softend++) {
+        *(task->stack_softend) = 0xDE; // Dummy value
     }
     // Update task state and place in ready queue
     task->blockstate = BLOCK_NONE;

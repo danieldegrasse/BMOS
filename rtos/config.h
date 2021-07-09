@@ -40,6 +40,9 @@
 #define PREEMPTION_DISABLED 0 // Tasks cannot be preempted
 #define PREEMPTION_ENABLED 1  // Higher priority tasks will preempt
 
+/** Default system stack protection size. Can be changed */
+#define SYS_STACK_PROTECTION_SIZE_DEFAULT 16 /* 16 bytes, or 4 registers */
+
 /**
  * System log levels
  */
@@ -103,6 +106,21 @@
  */
 #ifndef SYS_USE_PREEMPTION
 #define SYS_USE_PREEMPTION PREEMPTION_ENABLED
+#endif
+
+/**
+ * System stack protection size. If nonzero, statically allocated stacks will
+ * effectively be this many bytes smaller than their set size. Dynamically
+ * allocated stacks will not have this limitation.
+ *
+ * The task scheduler will fill the this many bytes at the end of the task
+ * stack with padding, and will kill a task if its stack pointer enters
+ * or exceededs the start of this padding, to limit the impact of a stack
+ * overflow
+ * Set by passing -DSYS_STACK_PROTECTION_SIZE=val
+ */
+#ifndef SYS_STACK_PROTECTION_SIZE
+#define SYS_STACK_PROTECTION_SIZE SYS_STACK_PROTECTION_SIZE_DEFAULT
 #endif
 
 #endif

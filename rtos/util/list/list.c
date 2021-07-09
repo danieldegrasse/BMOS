@@ -35,14 +35,16 @@ list_t list_append(list_t list, void *elem, list_state_t *state) {
 list_t list_prepend(list_t list, void *elem, list_state_t *state) {
     return list_add(list, elem, state, true);
 }
-
 /**
  * Iterates through linked list. If iterator function returns LST_BRK,
  * iteration will cease at that list element
  * @param list: list to iterate over
  * @param itr: iteration function. Will be called with the element being
  * iterated over, and return value dermines if iteration should continue
- * @return last list entry touched by iteration, or NULL on error.
+ * LST_CONT: iteration continues
+ * LST_BRK: iteration ends on this element
+ * LST_REM: unused
+ * @return last list entry touched by iteration
  */
 void *list_iterate(list_t list, list_return_t (*itr)(void *)) {
     list_state_t *head, *current;
@@ -60,12 +62,54 @@ void *list_iterate(list_t list, list_return_t (*itr)(void *)) {
         // Call itr with the data stored by list entry
         ret = itr(current->_container);
         current = current->_next;
-    } while (ret != LST_BRK && current != head);
+    } while (ret == LST_CONT && current != head);
     /**
      * Return data in entry before current (last one itr was called with data
      * from)
      */
     return current->_prev->_container;
+}
+
+/**
+ * Filters a linked list, using "itr" to determine if elements should be removed
+ * @param list: list to filter
+ * @param itr: iterator function. Return value of LST_CONT continues, LST_BRK
+ * stops iteration, and LST_REM removes the current element from the list.
+ * @param destructor: Function called with each element that the iterator
+ * returns LST_REM for. Allows caller to free list elements.
+ * @return new list after modification (or NULL on error/empty list)
+ */
+list_t list_filter(list_t list, list_return_t (*itr)(void *),
+                   void (*destructor)(void *)) {
+    list_state_t *head, *current, *remove;
+    list_return_t ret;
+    // Check parameters
+    if (list == NULL || itr == NULL || destructor == NULL) {
+        return NULL;
+    }
+    // Iterate through the list, until we cycle back around to the head.
+    head = current = (list_state_t *)list;
+    do {
+        // Call iterator
+        ret = itr(current->_container);
+        if (ret == LST_REM) {
+            remove = current;
+            current = current->_next;
+            list = list_remove(list, remove);
+            destructor(remove->_container);
+            if (remove == head) {
+                /**
+                 * Removed head. Call this function with new list.
+                 * Parameters check will handle base case where list is NULL
+                 */
+                return list_filter(list, itr, destructor);
+            }
+        } else {
+            // Assign current to next entry
+            current = current->_next;
+        }
+    } while (head != current && ret != LST_BRK);
+    return list;
 }
 
 /**

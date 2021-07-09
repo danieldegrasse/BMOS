@@ -12,10 +12,10 @@
  * };
  *
  * This call to list_append would create a new list with "ex" as the only
- * member: 
- * list_t alist; 
- * struct example ex; 
- * ex->data = buffer; // buffer definition emitted for clarity 
+ * member:
+ * list_t alist;
+ * struct example ex;
+ * ex->data = buffer; // buffer definition emitted for clarity
  * alist = list_append(NULL, &ex, ex.state);
  */
 
@@ -29,9 +29,9 @@ typedef void *list_t;
  * Declared in header file so that compiler knows type size
  */
 typedef struct list_state {
-    void* _container;
-    struct list_state* _next;
-    struct list_state* _prev; 
+    void *_container;
+    struct list_state *_next;
+    struct list_state *_prev;
 } list_state_t;
 
 /**
@@ -40,6 +40,7 @@ typedef struct list_state {
 typedef enum list_return {
     LST_BRK,  /*!< End iteration */
     LST_CONT, /*!< Continue iteration */
+    LST_REM,  /*!< Remove element */
 } list_return_t;
 
 /**
@@ -49,7 +50,7 @@ typedef enum list_return {
  * @param state: list element state. Should be associated with elem.
  * @return new list on success, or NULL on error
  */
-list_t list_append(list_t list, void *elem, list_state_t* state);
+list_t list_append(list_t list, void *elem, list_state_t *state);
 
 /**
  * Prepends element to a list
@@ -58,7 +59,7 @@ list_t list_append(list_t list, void *elem, list_state_t* state);
  * @param state: list element state. Should be associated with elem.
  * @return new list on success, or NULL on error
  */
-list_t list_prepend(list_t list, void *elem, list_state_t* state);
+list_t list_prepend(list_t list, void *elem, list_state_t *state);
 
 /**
  * Iterates through linked list. If iterator function returns LST_BRK,
@@ -66,9 +67,24 @@ list_t list_prepend(list_t list, void *elem, list_state_t* state);
  * @param list: list to iterate over
  * @param itr: iteration function. Will be called with the element being
  * iterated over, and return value dermines if iteration should continue
+ * LST_CONT: iteration continues
+ * LST_BRK: iteration ends on this element
+ * LST_REM: unused
  * @return last list entry touched by iteration
  */
-void* list_iterate(list_t list, list_return_t (*itr)(void *));
+void *list_iterate(list_t list, list_return_t (*itr)(void *));
+
+/**
+ * Filters a linked list, using "itr" to determine if elements should be removed
+ * @param list: list to filter
+ * @param itr: iterator function. Return value of LST_CONT continues, LST_BRK
+ * stops iteration, and LST_REM removes the current element from the list.
+ * @param destructor: Function called with each element that the iterator
+ * returns LST_REM for. Allows caller to free list elements.
+ * @return new list after modification (or NULL on error/empty list)
+ */
+list_t list_filter(list_t list, list_return_t (*itr)(void *),
+                   void (*destructor)(void *));
 
 /**
  * Remove the provided list_state_t from the list
@@ -77,21 +93,20 @@ void* list_iterate(list_t list, list_return_t (*itr)(void *));
  * @return new list on success, or NULL on error. NULL is also returned if
  * list is empty.
  */
-list_t list_remove(list_t list, list_state_t* target);
-
+list_t list_remove(list_t list, list_state_t *target);
 
 /**
  * Gets the head of a list without removing it
  * @param list: list to get head of
  * @return pointer to head element of list
  */
-void* list_get_head(list_t list);
+void *list_get_head(list_t list);
 
 /**
  * Gets the tail of a list without removing it
  * @param list: list to get tail of
  * @return pointer to tail element of list
  */
-void* list_get_tail(list_t list);
+void *list_get_tail(list_t list);
 
 #endif

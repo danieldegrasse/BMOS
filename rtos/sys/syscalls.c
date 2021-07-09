@@ -57,7 +57,7 @@ void _exit(int status) {
  */
 void *_sbrk(int incr) {
     void *old_brk;
-    if (SYSHEAPSIZE != 0) {
+    if (SYS_HEAP_SIZE != 0) {
         old_brk = current_sbrk;
         // Set the new break
         current_sbrk += incr;
@@ -183,11 +183,11 @@ void _init(void) {
 #endif
     /**
      * GCC complains when you try to initialize the max_sbrk as a static
-     * variable with the value &_ebss + SYSHEAPSIZE. It complains, logically
+     * variable with the value &_ebss + SYS_HEAP_SIZE. It complains, logically
      * enough, that you are indexing beyond the 1 byte _ebss supposedly is.
      * Setting max_sbrk to the correct value here is the workaround.
      */
-    max_sbrk += SYSHEAPSIZE;
+    max_sbrk += SYS_HEAP_SIZE;
 }
 
 /**

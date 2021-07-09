@@ -34,8 +34,8 @@ static syserr_t test1_naturallog() {
     int iterations, ret, log_strlen;
     char log_str[] = "abcdefghijklmnopqrstuvwxyz\n";
     log_strlen = sizeof(log_str) - 1;
-    if (SYSLOGBUFSIZE) {
-        iterations = (SYSLOGBUFSIZE / (sizeof(log_str) - 1)) + 1;
+    if (SYSLOG_BUFSIZE) {
+        iterations = (SYSLOG_BUFSIZE / (sizeof(log_str) - 1)) + 1;
     } else {
         // If no log buffer exists, this test can pass without logging data
         iterations = 0;
@@ -89,15 +89,15 @@ static syserr_t test2_forcedflush() {
  */
 static syserr_t test3_loglevel() {
     printf("This test logs output with various debugging levels\n");
-    printf("Your current logging level is %d\n", SYSLOGLEVEL);
-    LOG_E(TAG, "This message should be visible if %i>=%i", SYSLOGLEVEL_ERROR,
-          SYSLOGLEVEL);
-    LOG_W(TAG, "This message should be visible if %i>=%i", SYSLOGLEVEL_WARNING,
-          SYSLOGLEVEL);
-    LOG_I(TAG, "This message should be visible if %i>=%i", SYSLOGLEVEL_INFO,
-          SYSLOGLEVEL);
-    LOG_D(TAG, "This message should be visible if %i>=%i", SYSLOGLEVEL_DEBUG,
-          SYSLOGLEVEL);
+    printf("Your current logging level is %d\n", SYSLOG_LEVEL);
+    LOG_E(TAG, "This message should be visible if %i>=%i", SYSLOG_LEVEL_ERROR,
+          SYSLOG_LEVEL);
+    LOG_W(TAG, "This message should be visible if %i>=%i", SYSLOG_LEVEL_WARNING,
+          SYSLOG_LEVEL);
+    LOG_I(TAG, "This message should be visible if %i>=%i", SYSLOG_LEVEL_INFO,
+          SYSLOG_LEVEL);
+    LOG_D(TAG, "This message should be visible if %i>=%i", SYSLOG_LEVEL_DEBUG,
+          SYSLOG_LEVEL);
     printf("---- Test 3 Complete -----\n");
     fsync(STDIN_FILENO);
     return SYS_OK;

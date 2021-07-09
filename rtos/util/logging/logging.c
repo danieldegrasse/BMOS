@@ -60,7 +60,7 @@ void LOG_D(const char *tag, char *format, ...) {
     va_list valist;
     // Start valist with format as last argument
     va_start(valist, format);
-    syslog(SYSLOGLEVEL_DEBUG, tag, format, valist);
+    syslog(SYSLOG_LEVEL_DEBUG, tag, format, valist);
     // Free valist
     va_end(valist);
 }
@@ -74,7 +74,7 @@ void LOG_I(const char *tag, char *format, ...) {
     va_list valist;
     // Start valist with format as last argument
     va_start(valist, format);
-    syslog(SYSLOGLEVEL_INFO, tag, format, valist);
+    syslog(SYSLOG_LEVEL_INFO, tag, format, valist);
     // Free valist
     va_end(valist);
 }
@@ -88,7 +88,7 @@ void LOG_W(const char *tag, char *format, ...) {
     va_list valist;
     // Start valist with format as last argument
     va_start(valist, format);
-    syslog(SYSLOGLEVEL_WARNING, tag, format, valist);
+    syslog(SYSLOG_LEVEL_WARNING, tag, format, valist);
     // Free valist
     va_end(valist);
 }
@@ -102,7 +102,7 @@ void LOG_E(const char *tag, char *format, ...) {
     va_list valist;
     // Start valist with format as last argument
     va_start(valist, format);
-    syslog(SYSLOGLEVEL_ERROR, tag, format, valist);
+    syslog(SYSLOG_LEVEL_ERROR, tag, format, valist);
     // Free valist
     va_end(valist);
 }
@@ -115,20 +115,20 @@ void LOG_E(const char *tag, char *format, ...) {
  * @param logstr: NULL terminated log string
  */
 void LOG_MIN(int log_level, const char *tag, const char *logstr) {
-    if (log_level >= SYSLOGLEVEL) {
+    if (log_level >= SYSLOG_LEVEL) {
         // Log tag and level
         write(STDOUT_FILENO, tag, strlen(tag));
         switch (log_level) {
-        case SYSLOGLEVEL_DEBUG:
+        case SYSLOG_LEVEL_DEBUG:
             write(STDOUT_FILENO, "[DEBUG]: ", 9);
             break;
-        case SYSLOGLEVEL_INFO:
+        case SYSLOG_LEVEL_INFO:
             write(STDOUT_FILENO, "[INFO]: ", 8);
             break;
-        case SYSLOGLEVEL_WARNING:
+        case SYSLOG_LEVEL_WARNING:
             write(STDOUT_FILENO, "[WARNING]: ", 11);
             break;
-        case SYSLOGLEVEL_ERROR:
+        case SYSLOG_LEVEL_ERROR:
             write(STDOUT_FILENO, "[ERROR]: ", 9);
             break;
         default:
@@ -143,19 +143,19 @@ void LOG_MIN(int log_level, const char *tag, const char *logstr) {
 }
 
 static void syslog(int log_level, const char *tag, char *format, va_list ap) {
-    if (log_level >= SYSLOGLEVEL) {
+    if (log_level >= SYSLOG_LEVEL) {
         // Log message level
         switch (log_level) {
-        case SYSLOGLEVEL_DEBUG:
+        case SYSLOG_LEVEL_DEBUG:
             printf("%s [DEBUG]: ", tag);
             break;
-        case SYSLOGLEVEL_INFO:
+        case SYSLOG_LEVEL_INFO:
             printf("%s [INFO]: ", tag);
             break;
-        case SYSLOGLEVEL_WARNING:
+        case SYSLOG_LEVEL_WARNING:
             printf("%s [WARNING]: ", tag);
             break;
-        case SYSLOGLEVEL_ERROR:
+        case SYSLOG_LEVEL_ERROR:
             printf("%s [ERROR]: ", tag);
             break;
         default:

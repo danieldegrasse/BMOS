@@ -7,7 +7,7 @@
 
 #include "semihost.h"
 
-static char semihost_buf[SYSLOGBUFSIZE];
+static char semihost_buf[SYSLOG_BUFSIZE];
 static char *write_offset = semihost_buf;
 
 /**
@@ -57,7 +57,7 @@ void semihost_writestr(char *str) {
  */
 void semihost_writebuf(char *buf, int len) {
     int remaining = len;
-    char *buf_max = (SYSLOGBUFSIZE - 1) + semihost_buf;
+    char *buf_max = (SYSLOG_BUFSIZE - 1) + semihost_buf;
     while (remaining--) {
         if (*buf == '\0') {
             // We do not support writing null characters to stream

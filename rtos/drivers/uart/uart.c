@@ -567,7 +567,7 @@ static void UART_interrupt(void) {
         }
         // Store the data
         if (buf_write(&(handle->read_buf), data) != SYS_OK) {
-            LOG_MIN(SYSLOGLEVEL_DEBUG, __FILE__,
+            LOG_MIN(SYSLOG_LEVEL_DEBUG, __FILE__,
                     "Dropping character from UART");
             // Write 1 to RXFRQ to drop the data
             SETBITS(handle->regs->RQR, USART_RQR_RXFRQ);

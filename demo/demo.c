@@ -145,6 +145,7 @@ void foreground_task(void *arg) {
         len = snprintf((char *)buf, sizeof(buf),
                        "Foreground task running, iteration %d\n", i);
         // Write data to UART
+        LOG_I(TAG, "Writing data to UART");
         if (UART_write(uart_dev, buf, len, &err) != len) {
             LOG_E(TAG, "UART write failed");
             exit(err);
@@ -152,6 +153,7 @@ void foreground_task(void *arg) {
         i++;
         // Wait for a button press
         semaphore_pend(buttonpress_sem, SYS_TIMEOUT_INF);
+        LOG_I(TAG, "Woke from semaphore");
     }
 }
 

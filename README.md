@@ -1,4 +1,4 @@
-# NucleoRTOS
+# BMOS
 A basic RTOS kernel offering preemptive task switching, distinct task priority, and semaphores for synchronization. This project also includes STM324L433RC specific drivers designed for use with the RTOS kernel.
 ## Project Components
 This project includes 
